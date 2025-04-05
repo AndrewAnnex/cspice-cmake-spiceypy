@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.15)
 project(CSPICE C)
 
 # -----------------------------------------------------------------------------
+# Log if using scikit-build
+# -----------------------------------------------------------------------------
+if(SKBUILD)
+  message(STATUS "The project is built using scikit-build")
+endif()
+
+# -----------------------------------------------------------------------------
 # Log the C compiler and its ID
 # -----------------------------------------------------------------------------
 message(STATUS "Using C Compiler: ${CMAKE_C_COMPILER}")
@@ -100,6 +107,8 @@ endif()
 # Windows-specific configuration: Use a .def file for symbol exports.
 # -----------------------------------------------------------------------------
 if(WIN32)
+  target_compile_definitions(cspice PRIVATE _COMPLEX_DEFINED MSDOS OMIT_BLANK_CC NON_ANSI_STDIO)
+  target_compile_options(cspice PRIVATE /O2 /nologo)
   set(CSPICE_DEF_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cspice.def")
   if(EXISTS ${CSPICE_DEF_FILE})
     message(STATUS "Using CSPICE .def file: ${CSPICE_DEF_FILE}")
@@ -121,3 +130,13 @@ set_target_properties(cspice PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # -----------------------------------------------------------------------------
 add_executable(test_cspice test_cspice.c)
 target_link_libraries(test_cspice PRIVATE cspice)
+
+# -----------------------------------------------------------------------------
+# Install if using scikit-build
+# -----------------------------------------------------------------------------
+if(SKBUILD)
+  install(TARGETS cspice
+          LIBRARY DESTINATION cspice
+          RUNTIME DESTINATION cspice
+          ARCHIVE DESTINATION cspice)
+endif()
