@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.15)
 project(CSPICE C)
 
 # -----------------------------------------------------------------------------
@@ -31,12 +31,12 @@ else()
   # Replace the URLs below with your actual archive locations.
   # -----------------------------------------------------------------------------
   if(WIN32)
-    set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}C/PC_Windows_VisualC_64bit/packages/cspice.zip")
+    set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}/C/PC_Windows_VisualC_64bit/packages/cspice.zip")
   elseif(APPLE)
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
       set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}/C/MacM1_OSX_clang_64bit/packages/cspice.tar.Z")
     else()
-      set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}7/C/MacIntel_OSX_AppleC_64bit/packages/cspice.tar.Z")
+      set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}/C/MacIntel_OSX_AppleC_64bit/packages/cspice.tar.Z")
     endif()
   else() # Assuming Linux or similar UNIX
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
@@ -114,6 +114,7 @@ endif()
 # -----------------------------------------------------------------------------
 target_compile_definitions(cspice PRIVATE -DNDEBUG)
 set_target_properties(cspice PROPERTIES VERSION 67 SOVERSION 1)
+set_target_properties(cspice PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 # -----------------------------------------------------------------------------
 # testing 
