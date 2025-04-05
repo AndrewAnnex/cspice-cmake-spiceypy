@@ -41,7 +41,7 @@ jobs:
       - name: Configure CMake
         run: cmake -B build -S . ${{ matrix.extra_options }}
       - name: Build with CMake
-        run: cmake --build build --parallel 4
+        run: cmake --build build --parallel 4 --config Release
       - name: Run Tests on Windows
         if: runner.os == 'Windows'
         run: |
