@@ -1,0 +1,54 @@
+name: CI Build and Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # Linux: native x86_64 build (runs on the standard Linux runner)
+          - description: "Linux x86_64 native"
+            runner: ubuntu-latest
+            extra_options: ""
+          # Linux: native aarch64 build (using the native aarch64 runner)
+          - description: "Linux aarch64 native"
+            runner: ubuntu-22.04-arm
+            extra_options: ""
+          # macOS: native x86_64 build
+          - description: "macOS x86_64 native"
+            runner: macos-13
+            extra_options: ""
+          # macOS: native arm64 build
+          - description: "macOS arm64 native"
+            runner: macos-14
+            extra_options: ""
+          # Windows: native x86_64 build
+          - description: "Windows x86_64 native"
+            runner: windows-latest
+            extra_options: ""
+      fail-fast: false
+      max-parallel: 5
+    runs-on: ${{ matrix.runner }}
+    name: ${{ matrix.description }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      - name: Configure CMake
+        run: cmake -B build -S . ${{ matrix.extra_options }}
+      - name: Build with CMake
+        run: cmake --build build --parallel 4
+      - name: Run Tests on Windows
+        if: runner.os == 'Windows'
+        run: |
+          cd build
+          test_cspice.exe
+      - name: Run Tests on non-Windows
+        if: runner.os != 'Windows'
+        run: |
+          cd build
+          ./test_cspice
