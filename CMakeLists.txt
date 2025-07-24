@@ -1,11 +1,20 @@
-cmake_minimum_required(VERSION 3.15)
-project(CSPICE C)
+cmake_minimum_required(VERSION 3.24)
 
-# -----------------------------------------------------------------------------
-# Log if using scikit-build
-# -----------------------------------------------------------------------------
-if(SKBUILD)
-  message(STATUS "The project is built using scikit-build")
+#-------------------------------------------------------------------------------
+# 1) Project declaration with version and language
+#-------------------------------------------------------------------------------
+project(cspice
+    VERSION 67.0.0
+    DESCRIPTION "NAIF CSPICE Toolkit"
+    LANGUAGES C
+)
+
+#-------------------------------------------------------------------------------
+# 2) Build type default
+#-------------------------------------------------------------------------------
+# Only seed a default; let the user override with -DCMAKE_BUILD_TYPE.
+if(NOT DEFINED CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type (default Release)" )
 endif()
 
 # -----------------------------------------------------------------------------
@@ -19,23 +28,23 @@ message(STATUS "C Compiler ID: ${CMAKE_C_COMPILER_ID}")
 # -----------------------------------------------------------------------------
 set(CSPICE_VERSION "N0067")
 
-# -----------------------------------------------------------------------------
-# Option to force macOS ARM build (set to ON to build for arm64 even on x86_64 hosts).
-# -----------------------------------------------------------------------------
-if(APPLE)
-  option(BUILD_MACOS_ARM "Force build for macOS arm64" OFF)
-endif()
+#-------------------------------------------------------------------------------
+# 3) Modules & install dirs
+#-------------------------------------------------------------------------------
+include(CTest)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+include(FetchContent)
 
 # -----------------------------------------------------------------------------
 # Determine whether to use a local CSPICE source or to download it.
 # -----------------------------------------------------------------------------
 if(DEFINED ENV{CSPICE_SRC})
-  set(CSPICE_SOURCE_DIR $ENV{CSPICE_SRC})
+  set(CSPICE_SOURCE_ROOT $ENV{CSPICE_SRC})
   message(STATUS "Using local CSPICE source from: $ENV{CSPICE_SRC}")
 else()
   # -----------------------------------------------------------------------------
   # Select the archive URL based on OS and architecture.
-  # Replace the URLs below with your actual archive locations.
   # -----------------------------------------------------------------------------
   if(WIN32)
     set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}/C/PC_Windows_VisualC_64bit/packages/cspice.zip")
@@ -53,54 +62,54 @@ else()
     endif()
   endif()
   message(STATUS "No local CSPICE source provided. Downloading from: ${CSPICE_ARCHIVE_URL}")
-  include(FetchContent)
   FetchContent_Declare(
-    cspice
+    cspice_src
     URL ${CSPICE_ARCHIVE_URL}
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     SOURCE_DIR ${CMAKE_BINARY_DIR}/cspice-src
   )
-  FetchContent_MakeAvailable(cspice)
-  set(CSPICE_SOURCE_DIR ${CMAKE_BINARY_DIR}/cspice-src)
+  FetchContent_MakeAvailable(cspice_src)
+  set(CSPICE_SOURCE_ROOT ${cspice_src_SOURCE_DIR})
 endif()
 
 # -----------------------------------------------------------------------------
-# Locate the CSPICE source files and headers.
-#
-# Adjust the glob pattern if your archive has a different layout.
+# 5) Locate the CSPICE source files.
 # -----------------------------------------------------------------------------
 file(GLOB_RECURSE CSPICE_SOURCES
-  "${CSPICE_SOURCE_DIR}/src/cspice/*.c"
+  ${CSPICE_SOURCE_ROOT}/src/cspice/*.c
 )
 
 # -----------------------------------------------------------------------------
 # Create the shared library target.
 # -----------------------------------------------------------------------------
 add_library(cspice SHARED ${CSPICE_SOURCES})
-target_include_directories(cspice PUBLIC "${CSPICE_SOURCE_DIR}/include")
+
+target_include_directories(cspice 
+  PUBLIC 
+  $<BUILD_INTERFACE:${CSPICE_SOURCE_ROOT}/include>
+  $<INSTALL_INTERFACE:include/cspice>
+)
+
+# -----------------------------------------------------------------------------
+# Additional compile definitions, flags, or versioning.
+# -----------------------------------------------------------------------------
+target_compile_definitions(cspice PRIVATE -DNDEBUG)
+target_compile_features(cspice PUBLIC c_std_11)
+set_target_properties(cspice PROPERTIES
+    C_STANDARD_REQUIRED       ON
+    C_EXTENSIONS              OFF
+    POSITION_INDEPENDENT_CODE ON
+    VERSION                   ${PROJECT_VERSION}
+    SOVERSION                 ${PROJECT_VERSION_MAJOR}
+)
 
 # -----------------------------------------------------------------------------
 # Platform-specific compile and link flags.
-#
-# This section emulates the following logic from your Python script:
-#
-#   - For Unix systems, compile with -fPIC, -O2, and -ansi.
-#   - On Darwin, use a -target flag:
-#         * "-target arm64-apple-macos11" if building for macOS arm64,
-#         * "-target x86_64-apple-macos10.9" otherwise.
-#     Also, link with -dynamiclib and set the install_name.
-#   - On Linux, add a -Wl,-soname flag and link with -lm.
 # -----------------------------------------------------------------------------
-if(UNIX AND NOT WIN32)
-  target_compile_options(cspice PRIVATE -fPIC -O3 -ansi)
-  if(APPLE)
-    target_link_options(cspice PRIVATE -dynamiclib -install_name "@rpath/libcspice.so")
-  else()
-    # is UNIX
-    target_link_options(cspice PRIVATE -Wl,-soname,libcspice.so)
-    # Link with the math library.
-    target_link_libraries(cspice PRIVATE m)
-  endif()
+if(APPLE)
+  target_link_options(cspice PRIVATE
+                      -dynamiclib
+                      -install_name "@rpath/libcspice.so")
 endif()
 
 # -----------------------------------------------------------------------------
@@ -108,7 +117,7 @@ endif()
 # -----------------------------------------------------------------------------
 if(WIN32)
   target_compile_definitions(cspice PRIVATE _COMPLEX_DEFINED MSDOS OMIT_BLANK_CC NON_ANSI_STDIO)
-  target_compile_options(cspice PRIVATE /O2 /nologo)
+  target_compile_options(cspice PRIVATE /nologo)
   set(CSPICE_DEF_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cspice.def")
   if(EXISTS ${CSPICE_DEF_FILE})
     message(STATUS "Using CSPICE .def file: ${CSPICE_DEF_FILE}")
@@ -118,25 +127,70 @@ if(WIN32)
   endif()
 endif()
 
-# -----------------------------------------------------------------------------
-# Additional compile definitions, flags, or versioning.
-# -----------------------------------------------------------------------------
-target_compile_definitions(cspice PRIVATE -DNDEBUG)
-set_target_properties(cspice PROPERTIES VERSION 67 SOVERSION 1)
-set_target_properties(cspice PROPERTIES POSITION_INDEPENDENT_CODE ON)
+#-------------------------------------------------------------------------------
+# Link math library
+#-------------------------------------------------------------------------------
+if(NOT MSVC)
+  target_link_libraries(cspice PUBLIC m)
+endif()
 
 # -----------------------------------------------------------------------------
-# testing 
+# Create a namespaced alias so downstream can do “cspice::cspice”
 # -----------------------------------------------------------------------------
-add_executable(test_cspice test_cspice.c)
-target_link_libraries(test_cspice PRIVATE cspice)
+add_library(CSPICE::cspice ALIAS cspice)
 
 # -----------------------------------------------------------------------------
-# Install if using scikit-build
+# Installs for cspice headers/shared library etc
 # -----------------------------------------------------------------------------
-if(SKBUILD)
-  install(TARGETS cspice
-          LIBRARY DESTINATION cspice
-          RUNTIME DESTINATION cspice
-          ARCHIVE DESTINATION cspice)
+install(TARGETS cspice 
+        EXPORT CSPICETargets
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cspice
+)
+
+# Install the header directory 
+install(DIRECTORY ${CSPICE_SOURCE_ROOT}/include/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cspice
+)
+
+#-------------------------------------------------------------------------------
+# CMake package configuration
+#-------------------------------------------------------------------------------
+# Version file
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/cspiceConfigVersion.cmake"
+    VERSION     ${PROJECT_VERSION}
+    COMPATIBILITY AnyNewerVersion
+)
+
+# Config file (template: cmake/cspiceConfig.cmake.in)
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cspiceConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/cspiceConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cspice
+)
+
+# Export a CMake package config so others can do find_package(CSPICE)
+install(EXPORT CSPICETargets
+  FILE   cspiceTargets.cmake
+  NAMESPACE CSPICE::
+  DESTINATION lib/cmake/CSPICE
+)
+
+install(FILES
+   "${CMAKE_CURRENT_BINARY_DIR}/cspiceConfig.cmake"
+   "${CMAKE_CURRENT_BINARY_DIR}/cspiceConfigVersion.cmake"
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cspice
+)
+
+# -----------------------------------------------------------------------------
+# Optional Testing, only build & register tests if BUILD_TESTING is ON
+# -----------------------------------------------------------------------------
+if(BUILD_TESTING)
+  add_executable(test_cspice test_cspice.c)
+  target_link_libraries(test_cspice PRIVATE cspice)
+  add_test(NAME cspice_test
+           COMMAND test_cspice
+           WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 endif()
