@@ -109,7 +109,7 @@ set_target_properties(cspice PROPERTIES
 # -----------------------------------------------------------------------------
 if(APPLE)
   # Ensure Clang uses gnu89 mode
-  target_compile_options(cspice PRIVATE -std=gnu89)
+  target_compile_options(cspice PRIVATE -w -std=gnu89)
   target_link_options(cspice PRIVATE
                       -dynamiclib
                       -install_name "@rpath/libcspice.so")
@@ -118,7 +118,7 @@ endif()
 # -----------------------------------------------------------------------------
 # Windows-specific configuration: Use a .def file for symbol exports.
 # -----------------------------------------------------------------------------
-if(WIN32)
+if(MSVC)
   target_compile_definitions(cspice PRIVATE _COMPLEX_DEFINED MSDOS OMIT_BLANK_CC NON_ANSI_STDIO)
   target_compile_options(cspice PRIVATE /nologo)
   set(CSPICE_DEF_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cspice.def")
@@ -128,7 +128,11 @@ if(WIN32)
   else()
     message(WARNING "CSPICE .def file not found: ${CSPICE_DEF_FILE}")
   endif()
+elseif(WIN32)
+  # MinGW/other Windows GCC
+  target_compile_definitions(cspice PRIVATE _COMPLEX_DEFINED MSDOS OMIT_BLANK_CC NON_ANSI_STDIO)
 endif()
+
 
 #-------------------------------------------------------------------------------
 # Link math library
