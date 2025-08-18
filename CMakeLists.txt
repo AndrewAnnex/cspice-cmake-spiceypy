@@ -107,6 +107,7 @@ set_target_properties(cspice PROPERTIES
 # Platform-specific compile and link flags.
 # -----------------------------------------------------------------------------
 if(APPLE)
+  target_compile_options(cspice PRIVATE -std=gnu89)
   target_link_options(cspice PRIVATE
                       -dynamiclib
                       -install_name "@rpath/libcspice.so")
