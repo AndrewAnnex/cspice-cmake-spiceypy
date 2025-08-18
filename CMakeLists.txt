@@ -9,6 +9,11 @@ project(cspice
     LANGUAGES C
 )
 
+# -----------------------------------------------------------------------------
+# Define the version of CSPICE.
+# -----------------------------------------------------------------------------
+set(CSPICE_VERSION "N0067")
+
 #-------------------------------------------------------------------------------
 # 2) Build type default
 #-------------------------------------------------------------------------------
@@ -22,11 +27,6 @@ endif()
 # -----------------------------------------------------------------------------
 message(STATUS "Using C Compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "C Compiler ID: ${CMAKE_C_COMPILER_ID}")
-
-# -----------------------------------------------------------------------------
-# Define the version of CSPICE.
-# -----------------------------------------------------------------------------
-set(CSPICE_VERSION "N0067")
 
 #-------------------------------------------------------------------------------
 # 3) Modules & install dirs
@@ -92,21 +92,23 @@ target_include_directories(cspice
 
 # -----------------------------------------------------------------------------
 # Additional compile definitions, flags, or versioning.
+# gnu89 mode is required for implicit int etc.
 # -----------------------------------------------------------------------------
 target_compile_definitions(cspice PRIVATE -DNDEBUG)
-target_compile_features(cspice PUBLIC c_std_11)
 set_target_properties(cspice PROPERTIES
+    C_STANDARD 90
     C_STANDARD_REQUIRED       ON
-    C_EXTENSIONS              OFF
+    C_EXTENSIONS              ON  
     POSITION_INDEPENDENT_CODE ON
     VERSION                   ${PROJECT_VERSION}
-    SOVERSION                 ${PROJECT_VERSION_MAJOR}
+    # No SOVERSION: CSPICE doesn’t guarantee ABI compatibility
 )
 
 # -----------------------------------------------------------------------------
 # Platform-specific compile and link flags.
 # -----------------------------------------------------------------------------
 if(APPLE)
+  # Ensure Clang uses gnu89 mode
   target_compile_options(cspice PRIVATE -std=gnu89)
   target_link_options(cspice PRIVATE
                       -dynamiclib
@@ -132,7 +134,7 @@ endif()
 # Link math library
 #-------------------------------------------------------------------------------
 if(NOT MSVC)
-  target_link_libraries(cspice PUBLIC m)
+  target_link_libraries(cspice PRIVATE m)
 endif()
 
 # -----------------------------------------------------------------------------
@@ -170,6 +172,7 @@ configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/cspiceConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/cspiceConfig.cmake"
     INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cspice
+    PATH_VARS CSPICE_VERSION   # <- tell CMake to substitute @CSPICE_VERSION@
 )
 
 # Export a CMake package config so others can do find_package(CSPICE)
@@ -191,6 +194,11 @@ install(FILES
 if(BUILD_TESTING)
   add_executable(test_cspice test_cspice.c)
   target_link_libraries(test_cspice PRIVATE cspice)
+  set_target_properties(test_cspice PROPERTIES
+      C_STANDARD 11
+      C_STANDARD_REQUIRED ON
+      C_EXTENSIONS OFF
+  )
   add_test(NAME cspice_test
            COMMAND test_cspice
            WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
