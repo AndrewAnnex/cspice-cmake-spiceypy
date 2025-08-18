@@ -46,7 +46,7 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           cd build
-          test_cspice.exe
+          ./test_cspice.exe
       - name: Run Tests on non-Windows
         if: runner.os != 'Windows'
         run: |
