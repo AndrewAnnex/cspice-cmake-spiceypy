@@ -133,6 +133,22 @@ elseif(WIN32)
   target_compile_definitions(cspice PRIVATE _COMPLEX_DEFINED MSDOS OMIT_BLANK_CC NON_ANSI_STDIO)
 endif()
 
+#-------------------------------------------------------------------------------
+# Patch to use MSVC's isatty 
+#-------------------------------------------------------------------------------
+if (MSVC)
+  set(FIO_H "${CSPICE_SOURCE_ROOT}/include/fio.h")
+
+  file(READ "${FIO_H}" FIO_H_CONTENTS)
+
+  string(REPLACE "extern int isatty(int);" 
+               "#ifndef _WIN32\nextern int isatty(int);\n#endif"
+               FIO_H_CONTENTS_FIXED 
+               "${FIO_H_CONTENTS}")
+
+  file(WRITE "${FIO_H}" "${FIO_H_CONTENTS_FIXED}")
+endif()
+
 
 #-------------------------------------------------------------------------------
 # Link math library
