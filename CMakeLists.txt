@@ -92,7 +92,6 @@ target_include_directories(cspice
 
 # -----------------------------------------------------------------------------
 # Additional compile definitions, flags, or versioning.
-# gnu89 mode is required for implicit int etc.
 # -----------------------------------------------------------------------------
 target_compile_definitions(cspice PRIVATE -DNDEBUG)
 set_target_properties(cspice PROPERTIES
@@ -107,12 +106,20 @@ set_target_properties(cspice PROPERTIES
 # -----------------------------------------------------------------------------
 # Platform-specific compile and link flags.
 # -----------------------------------------------------------------------------
+
+# Common compile options for Unix-like systems (macOS + Linux/BSD)
+if(APPLE OR UNIX)
+  target_compile_options(cspice PRIVATE -ansi -UKR_headers -DVOID=void -Wimplicit-int)
+endif()
+
 if(APPLE)
-  # Ensure Clang uses gnu89 mode
-  target_compile_options(cspice PRIVATE -w -std=gnu89)
   target_link_options(cspice PRIVATE
                       -dynamiclib
-                      -install_name "@rpath/libcspice.so")
+                      -install_name "@rpath/libcspice.dylib")
+elseif(UNIX) # Linux, BSD, etc. (but not macOS)
+  target_link_options(cspice PRIVATE
+                      -shared
+                      -Wl,-soname,libcspice.so)
 endif()
 
 # -----------------------------------------------------------------------------

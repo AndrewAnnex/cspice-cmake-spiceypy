@@ -11,57 +11,49 @@ jobs:
     strategy:
       matrix:
         include:
-          # Linux: native x86_64 build (runs on the standard Linux runner)
-          - description: "Linux x86_64 native"
-            runner: ubuntu-latest
-            extra_options: ""
-          # Linux: native aarch64 build (using the native aarch64 runner)
-          - description: "Linux aarch64 native"
-            runner: ubuntu-22.04-arm
-            extra_options: ""
-          # macOS: native x86_64 build
-          - description: "macOS x86_64 native"
-            runner: macos-13
-            extra_options: ""
-          # macOS: native arm64 build
-          - description: "macOS arm64 native"
-            runner: macos-14
-            extra_options: ""
-          # Windows: native x86_64 MSVC build
-          - description: "Windows x86_64 MSVC"
-            runner: windows-latest
-            extra_options: >
-              -DCMAKE_C_COMPILER=cl
-              -DCMAKE_CXX_COMPILER=cl
-          # Windows: native x86_64 MinGW build
-          - description: "Windows x86_64 MinGW"
-            runner: windows-latest
-            extra_options: >
-              -DCMAKE_C_COMPILER=gcc
-              -DCMAKE_CXX_COMPILER=g++
+            # Linux: native x86_64 build (runs on the standard Linux runs-on)
+          - os: linux-intel
+            runs-on: ubuntu-latest
+            # Linux: native aarch64 build (using the native aarch64 runs-on)
+          - os: linux-arm
+            runs-on: ubuntu-22.04-arm
+            # macOS: native x86_64 build
+          - os: macos-intel
+            runs-on: macos-13"
+            # macOS: native arm64 build
+          - os: macos-arm
+            runs-on: macos-latest
+            # Windows: native x86_64 MSVC build
+          - os: windows-intel
+            runs-on: windows-latest       
       fail-fast: false
       max-parallel: 5
-    runs-on: ${{ matrix.runner }}
-    name: ${{ matrix.description }}
+    runs-on: ${{ matrix.runs-on }}
+    name: Build Wheels natively for ${{ matrix.os }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
-      - name: Setup MSVC dev command prompt
-        if: contains(matrix.description, 'MSVC')
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
+        uses: actions/checkout@v5
+      
       - name: Configure CMake
-        run: cmake -B build -S . -G Ninja ${{ matrix.extra_options }}
+        run: cmake -B build -S . -G Ninja 
+      
       - name: Build with CMake
         run: cmake --build build --parallel 4 --config Release
+
+      - name: Upload native Wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-wheels-${{ matrix.os }}-${{ strategy.job-index }}
+          path: ./dist/*.whl
+      
       - name: Run Tests on Windows
-        if: runner.os == 'Windows'
+        if: ${{ contains(matrix.os, 'windows') }}
         run: |
           cd build
           ./test_cspice.exe
+      
       - name: Run Tests on non-Windows
-        if: runner.os != 'Windows'
+        if:  ${{ !contains(matrix.os, 'windows') }}
         run: |
           cd build
           ./test_cspice
