@@ -183,7 +183,7 @@ configure_package_config_file(
 install(EXPORT CSPICETargets
   FILE   cspiceTargets.cmake
   NAMESPACE CSPICE::
-  DESTINATION lib/cmake/CSPICE
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/cspice
 )
 
 install(FILES
