@@ -137,16 +137,29 @@ endif()
 # Patch to use MSVC's isatty 
 #-------------------------------------------------------------------------------
 if (MSVC)
-  set(FIO_H "${CSPICE_SOURCE_ROOT}/include/fio.h")
+  set(FIO_H1 "${CSPICE_SOURCE_ROOT}/include/fio.h")
 
-  file(READ "${FIO_H}" FIO_H_CONTENTS)
+  file(READ "${FIO_H1}" FIO_H1_CONTENTS)
 
   string(REPLACE "extern int isatty(int);" 
                "#ifndef _WIN32\nextern int isatty(int);\n#endif"
-               FIO_H_CONTENTS_FIXED 
-               "${FIO_H_CONTENTS}")
+               FIO_H1_CONTENTS_FIXED 
+               "${FIO_H1_CONTENTS}")
+  
+  file(WRITE "${FIO_H1}" "${FIO_H1_CONTENTS_FIXED}")
 
-  file(WRITE "${FIO_H}" "${FIO_H_CONTENTS_FIXED}")
+  # If it's worth doing once, it's worth doing twice
+
+  set(FIO_H2 "${CSPICE_SOURCE_ROOT}/src/cspice/fio.h")
+  
+  file(READ "${FIO_H2}" FIO_H2_CONTENTS)
+
+  string(REPLACE "extern int isatty(int);" 
+               "#ifndef _WIN32\nextern int isatty(int);\n#endif"
+               FIO_H2_CONTENTS_FIXED 
+               "${FIO_H2_CONTENTS}")
+
+  file(WRITE "${FIO_H2}" "${FIO_H2_CONTENTS_FIXED}")
 endif()
 
 
