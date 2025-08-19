@@ -1,4 +1,4 @@
-LIBRARY			LIBCSPICE
+LIBRARY			CSPICE
 EXPORTS			appndc_c
 				appndd_c
 				appndi_c
