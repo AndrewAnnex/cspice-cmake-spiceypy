@@ -46,6 +46,11 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+      - name: Setup MSVC dev command prompt
+        if: contains(matrix.description, 'MSVC')
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
       - name: Configure CMake
         run: cmake -B build -S . -G Ninja ${{ matrix.extra_options }}
       - name: Build with CMake
