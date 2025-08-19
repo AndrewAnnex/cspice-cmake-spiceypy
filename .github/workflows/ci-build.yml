@@ -31,8 +31,8 @@ jobs:
           - description: "Windows x86_64 MSVC"
             runner: windows-latest
             extra_options: >
-              -DCMAKE_C_COMPILER=cl.exe
-              -DCMAKE_CXX_COMPILER=cl.exe
+              -DCMAKE_C_COMPILER=cl
+              -DCMAKE_CXX_COMPILER=cl
           # Windows: native x86_64 MinGW build
           - description: "Windows x86_64 MinGW"
             runner: windows-latest
