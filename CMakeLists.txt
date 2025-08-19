@@ -179,10 +179,11 @@ add_library(CSPICE::cspice ALIAS cspice)
 # Installs for cspice headers/shared library etc
 # -----------------------------------------------------------------------------
 install(TARGETS cspice 
-        EXPORT CSPICETargets
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cspice
+    EXPORT CSPICETargets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}       # Windows .dll
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}       # Unix .so / macOS .dylib
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}       # static / import libs
+    PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cspice
 )
 
 # Install the header directory 
