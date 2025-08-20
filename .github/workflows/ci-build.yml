@@ -25,7 +25,11 @@ jobs:
             runs-on: macos-latest
             # Windows: native x86_64 MSVC build
           - os: windows-intel
-            runs-on: windows-latest       
+            runs-on: windows-latest    
+            # emscripten: build wasm on linux
+          - os: emscripten
+            runs-on: ubuntu-latest
+            container: emscripten/emsdk:latest
       fail-fast: false
       max-parallel: 5
     runs-on: ${{ matrix.runs-on }}
@@ -34,8 +38,13 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v5
       
-      - name: Configure CMake
+      - name: Configure CMake Normally
+        if: ${{ !contains(matrix.os, 'emscripten') }}
         run: cmake -B build -S . -G Ninja 
+      
+      - name: Configure CMake Emscripten
+        if: ${{ contains(matrix.os, 'emscripten') }}
+        run: emcmake cmake -B build -S . -G Ninja 
       
       - name: Build with CMake
         run: cmake --build build --parallel 4 --config Release
@@ -46,8 +55,14 @@ jobs:
           cd build
           ./test_cspice.exe
       
-      - name: Run Tests on non-Windows
-        if:  ${{ !contains(matrix.os, 'windows') }}
+      - name: Run Tests on non-Windows, non-emscripten
+        if:  ${{ !contains(matrix.os, 'windows') && !contains(matrix.os, 'emscripten') }}
         run: |
           cd build
           ./test_cspice
+
+      - name: Run Tests on Emscripten
+        if:  ${{ contains(matrix.os, 'emscripten') }}
+        run: |
+          cd build
+          node ./test_cspice.js
