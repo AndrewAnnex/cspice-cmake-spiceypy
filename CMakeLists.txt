@@ -114,6 +114,24 @@ else()
           message(STATUS "No changes needed in ${file_path}")
       endif()
   endfunction()
+
+  # -------------------------------------------------------------------
+  # General function to patch all CSPICE .c files for one symbol
+  # -------------------------------------------------------------------
+  function(fix_f2c_symbol symbol good_decl_pattern bad_decl_pattern)
+      file(GLOB_RECURSE CSPICE_CS ${CSPICE_SOURCE_ROOT}/src/cspice/*.c)
+  
+      foreach(src ${CSPICE_CS})
+          file(READ "${src}" CONTENTS)
+  
+          string(REGEX REPLACE "${bad_decl_pattern}" "${good_decl_pattern}" CONTENTS_FIXED "${CONTENTS}")
+  
+          if(NOT "${CONTENTS}" STREQUAL "${CONTENTS_FIXED}")
+              message(STATUS "Patched ${symbol} prototype(s) in ${src}")
+              file(WRITE "${src}" "${CONTENTS_FIXED}")
+          endif()
+      endforeach()
+  endfunction()
   
   # -------------------------------------------------------------------
   # Apply prototype fixes only once per build tree
@@ -122,26 +140,17 @@ else()
   
   if(NOT EXISTS ${CSPICE_PATCH_MARKER})
       message(STATUS "Patching CSPICE f2c prototypes...")
-  
-      # ana.c: s_copy should be void
-      fix_f2c_prototypes(
-          "${CSPICE_SOURCE_ROOT}/src/cspice/ana.c"
-          "/\\* Subroutine \\*/ int s_copy"
+
+      # Fix all "/* Subroutine */ int s_copy" to void
+      fix_f2c_symbol("s_copy"
           "/* Subroutine */ void s_copy"
+          "/\\* Subroutine \\*/ int s_copy"
       )
-  
-      # ckmeta.c: s_cat should be void
-      fix_f2c_prototypes(
-          "${CSPICE_SOURCE_ROOT}/src/cspice/ckmeta.c"
-          "/\\* Subroutine \\*/ int s_cat"
+
+      # Fix all "/* Subroutine */ int s_cat" to void
+      fix_f2c_symbol("s_cat"
           "/* Subroutine */ void s_cat"
-      )
-  
-      # rdker.c: zzsetnnread_ should be void
-      fix_f2c_prototypes(
-          "${CSPICE_SOURCE_ROOT}/src/cspice/rdker.c"
-          "int zzsetnnread_"
-          "void zzsetnnread_"
+          "/\\* Subroutine \\*/ int s_cat"
       )
   
       # Drop a marker so we don't patch twice
@@ -194,6 +203,10 @@ if(APPLE OR UNIX)
     -DVOID=void  
     -UKR_headers 
     -Wimplicit-int
+    -Wimplicit-function-declaration
+    -Wno-deprecated-non-prototype
+    -Wno-shift-op-parentheses
+    -Wno-parentheses
   )
 endif()
 
