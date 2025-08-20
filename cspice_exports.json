@@ -1,6 +1,4 @@
 [
-	"_malloc",
-	"_free",
 	"_appndc_c",
 	"_appndd_c",
 	"_appndi_c",
@@ -52,8 +50,6 @@
 	"_copy_c",
 	"_cpos_c",
 	"_cposr_c",
-	"_cronos_",
-	"_parcml_",
 	"_cvpool_c",
 	"_cyllat_c",
 	"_cylrec_c",

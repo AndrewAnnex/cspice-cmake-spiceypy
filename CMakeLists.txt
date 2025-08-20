@@ -210,19 +210,40 @@ if(DEFINED EMSCRIPTEN)
     -Wno-int-conversion)
   target_link_options(cspice PRIVATE
     "-sSIDE_MODULE=1"
-    "-sMODULARIZE=1"
-    "-sEXPORT_ES6=1"
     "-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports.json"
     "-sINITIAL_MEMORY=134217728"   # 128 MB
     "-sALLOW_MEMORY_GROWTH=1"
     "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
     "-sNO_EXIT_RUNTIME=1"
-    "-sWARN_ON_UNDEFINED=0"
+    "-sWARN_ON_UNDEFINED_SYMBOLS=1"
     "-sFORCE_FILESYSTEM=1"
     "-sRETAIN_COMPILER_SETTINGS=1"
     "-O2"
   )
   set_property(TARGET cspice PROPERTY LINK_LIBRARIES "")
+
+  add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libcspice.wasm
+    COMMAND ${CMAKE_C_COMPILER}
+      -sSIDE_MODULE=2
+      -sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports.json
+      -sINITIAL_MEMORY=134217728
+      -sALLOW_MEMORY_GROWTH=1
+      -sMEMORY_GROWTH_GEOMETRIC_STEP=1.15
+      -sNO_EXIT_RUNTIME=1
+      -sWARN_ON_UNDEFINED_SYMBOLS=1
+      -sFORCE_FILESYSTEM=1
+      -sRETAIN_COMPILER_SETTINGS=1
+      -O2
+      -o ${CMAKE_CURRENT_LIBDIR}/libcspice.wasm
+      $<TARGET_FILE:cspice>
+    DEPENDS cspice
+  )
+
+  # Hook it into the build so `make all` / `ninja` produces libcspice.wasm
+  add_custom_target(cspice_wasm ALL
+    DEPENDS ${CMAKE_CURRENT_LIBDIR}/libcspice.wasm
+  )
 
 
 elseif(APPLE)
@@ -332,18 +353,22 @@ install(FILES
 # -----------------------------------------------------------------------------
 if(BUILD_TESTING)
   add_executable(test_cspice test_cspice.c)
-  target_link_libraries(test_cspice PRIVATE cspice)
   set_target_properties(test_cspice PROPERTIES
       C_STANDARD 11
       C_STANDARD_REQUIRED ON
       C_EXTENSIONS OFF
   )
   if(DEFINED EMSCRIPTEN)
+    add_dependencies(test_cspice cspice_wasm)
     set_target_properties(test_cspice PROPERTIES SUFFIX ".js")
+    target_include_directories(test_cspice PRIVATE
+      ${CSPICE_SOURCE_ROOT}/include
+    )
     target_compile_options(test_cspice PRIVATE -fPIC)
-    target_link_options(test_cspice PRIVATE -sMAIN_MODULE=1 -sINITIAL_MEMORY=134217728)
+    target_link_options(test_cspice PRIVATE -sMAIN_MODULE=2 -sINITIAL_MEMORY=134217728)
     add_test(NAME cspice_test COMMAND node ${CMAKE_CURRENT_BINARY_DIR}/test_cspice.js)
   else()
+    target_link_libraries(test_cspice PRIVATE cspice)
     add_test(NAME cspice_test COMMAND test_cspice WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
   endif()
 endif()
