@@ -101,21 +101,6 @@ else()
   endif()
 
   # -------------------------------------------------------------------
-  # Function to patch bad f2c prototypes inside specific CSPICE .c files
-  # -------------------------------------------------------------------
-  function(fix_f2c_prototypes file_path pattern replacement)
-      file(READ "${file_path}" FILE_CONTENTS)
-      string(REGEX REPLACE "${pattern}" "${replacement}" FILE_CONTENTS_FIXED "${FILE_CONTENTS}")
-  
-      if(NOT "${FILE_CONTENTS}" STREQUAL "${FILE_CONTENTS_FIXED}")
-          message(STATUS "Patched prototypes in ${file_path}")
-          file(WRITE "${file_path}" "${FILE_CONTENTS_FIXED}")
-      else()
-          message(STATUS "No changes needed in ${file_path}")
-      endif()
-  endfunction()
-
-  # -------------------------------------------------------------------
   # General function to patch all CSPICE .c files for one symbol
   # -------------------------------------------------------------------
   function(fix_f2c_symbol symbol good_decl_pattern bad_decl_pattern)
@@ -152,6 +137,12 @@ else()
           "/* Subroutine */ void s_cat"
           "/\\* Subroutine \\*/ int s_cat"
       )
+
+      # Fix all "int zzsetnnread_" to void
+        fix_f2c_symbol("zzsetnnread_"
+            "void zzsetnnread_"
+            "int zzsetnnread_"
+        )
   
       # Drop a marker so we don't patch twice
       file(WRITE ${CSPICE_PATCH_MARKER} "patched")
