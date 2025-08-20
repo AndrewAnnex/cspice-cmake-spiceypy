@@ -163,7 +163,7 @@ file(GLOB_RECURSE CSPICE_SOURCES
 # Create the shared library target.
 # -----------------------------------------------------------------------------
 if(DEFINED EMSCRIPTEN)
-  add_library(cspice MODULE ${CSPICE_SOURCES})
+  add_library(cspice STATIC ${CSPICE_SOURCES})
 else()
   add_library(cspice SHARED ${CSPICE_SOURCES})
 endif()
