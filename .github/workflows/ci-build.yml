@@ -40,12 +40,6 @@ jobs:
       - name: Build with CMake
         run: cmake --build build --parallel 4 --config Release
 
-      - name: Upload native Wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-wheels-${{ matrix.os }}-${{ strategy.job-index }}
-          path: ./dist/*.whl
-      
       - name: Run Tests on Windows
         if: ${{ contains(matrix.os, 'windows') }}
         run: |

@@ -70,6 +70,86 @@ else()
   )
   FetchContent_MakeAvailable(cspice_src)
   set(CSPICE_SOURCE_ROOT ${cspice_src_SOURCE_DIR})
+
+  #-------------------------------------------------------------------------------
+  # Patch to use MSVC's isatty if using MSVC
+  #-------------------------------------------------------------------------------
+  if (MSVC)
+    set(FIO_H1 "${CSPICE_SOURCE_ROOT}/include/fio.h")
+  
+    file(READ "${FIO_H1}" FIO_H1_CONTENTS)
+  
+    string(REPLACE "extern int isatty(int);" 
+                 "#ifndef _WIN32\nextern int isatty(int);\n#endif"
+                 FIO_H1_CONTENTS_FIXED 
+                 "${FIO_H1_CONTENTS}")
+    
+    file(WRITE "${FIO_H1}" "${FIO_H1_CONTENTS_FIXED}")
+  
+    # If it's worth doing once, it's worth doing twice
+  
+    set(FIO_H2 "${CSPICE_SOURCE_ROOT}/src/cspice/fio.h")
+    
+    file(READ "${FIO_H2}" FIO_H2_CONTENTS)
+  
+    string(REPLACE "extern int isatty(int);" 
+                 "#ifndef _WIN32\nextern int isatty(int);\n#endif"
+                 FIO_H2_CONTENTS_FIXED 
+                 "${FIO_H2_CONTENTS}")
+  
+    file(WRITE "${FIO_H2}" "${FIO_H2_CONTENTS_FIXED}")
+  endif()
+
+  # -------------------------------------------------------------------
+  # Function to patch bad f2c prototypes inside specific CSPICE .c files
+  # -------------------------------------------------------------------
+  function(fix_f2c_prototypes file_path pattern replacement)
+      file(READ "${file_path}" FILE_CONTENTS)
+      string(REGEX REPLACE "${pattern}" "${replacement}" FILE_CONTENTS_FIXED "${FILE_CONTENTS}")
+  
+      if(NOT "${FILE_CONTENTS}" STREQUAL "${FILE_CONTENTS_FIXED}")
+          message(STATUS "Patched prototypes in ${file_path}")
+          file(WRITE "${file_path}" "${FILE_CONTENTS_FIXED}")
+      else()
+          message(STATUS "No changes needed in ${file_path}")
+      endif()
+  endfunction()
+  
+  # -------------------------------------------------------------------
+  # Apply prototype fixes only once per build tree
+  # -------------------------------------------------------------------
+  set(CSPICE_PATCH_MARKER "${CMAKE_CURRENT_BINARY_DIR}/cspice_prototypes_patched")
+  
+  if(NOT EXISTS ${CSPICE_PATCH_MARKER})
+      message(STATUS "Patching CSPICE f2c prototypes...")
+  
+      # ana.c: s_copy should be void
+      fix_f2c_prototypes(
+          "${CSPICE_SOURCE_ROOT}/src/cspice/ana.c"
+          "/\\* Subroutine \\*/ int s_copy"
+          "/* Subroutine */ void s_copy"
+      )
+  
+      # ckmeta.c: s_cat should be void
+      fix_f2c_prototypes(
+          "${CSPICE_SOURCE_ROOT}/src/cspice/ckmeta.c"
+          "/\\* Subroutine \\*/ int s_cat"
+          "/* Subroutine */ void s_cat"
+      )
+  
+      # rdker.c: zzsetnnread_ should be void
+      fix_f2c_prototypes(
+          "${CSPICE_SOURCE_ROOT}/src/cspice/rdker.c"
+          "int zzsetnnread_"
+          "void zzsetnnread_"
+      )
+  
+      # Drop a marker so we don't patch twice
+      file(WRITE ${CSPICE_PATCH_MARKER} "patched")
+  else()
+      message(STATUS "CSPICE prototypes already patched, skipping")
+  endif()
+
 endif()
 
 # -----------------------------------------------------------------------------
@@ -109,7 +189,12 @@ set_target_properties(cspice PROPERTIES
 
 # Common compile options for Unix-like systems (macOS + Linux/BSD)
 if(APPLE OR UNIX)
-  target_compile_options(cspice PRIVATE -ansi -UKR_headers -DVOID=void -Wimplicit-int)
+  target_compile_options(cspice PRIVATE 
+    -ansi
+    -DVOID=void  
+    -UKR_headers 
+    -Wimplicit-int
+  )
 endif()
 
 if(APPLE)
@@ -138,35 +223,6 @@ if(MSVC)
 elseif(WIN32)
   # MinGW/other Windows GCC
   target_compile_definitions(cspice PRIVATE _COMPLEX_DEFINED MSDOS OMIT_BLANK_CC NON_ANSI_STDIO)
-endif()
-
-#-------------------------------------------------------------------------------
-# Patch to use MSVC's isatty 
-#-------------------------------------------------------------------------------
-if (MSVC)
-  set(FIO_H1 "${CSPICE_SOURCE_ROOT}/include/fio.h")
-
-  file(READ "${FIO_H1}" FIO_H1_CONTENTS)
-
-  string(REPLACE "extern int isatty(int);" 
-               "#ifndef _WIN32\nextern int isatty(int);\n#endif"
-               FIO_H1_CONTENTS_FIXED 
-               "${FIO_H1_CONTENTS}")
-  
-  file(WRITE "${FIO_H1}" "${FIO_H1_CONTENTS_FIXED}")
-
-  # If it's worth doing once, it's worth doing twice
-
-  set(FIO_H2 "${CSPICE_SOURCE_ROOT}/src/cspice/fio.h")
-  
-  file(READ "${FIO_H2}" FIO_H2_CONTENTS)
-
-  string(REPLACE "extern int isatty(int);" 
-               "#ifndef _WIN32\nextern int isatty(int);\n#endif"
-               FIO_H2_CONTENTS_FIXED 
-               "${FIO_H2_CONTENTS}")
-
-  file(WRITE "${FIO_H2}" "${FIO_H2_CONTENTS_FIXED}")
 endif()
 
 
