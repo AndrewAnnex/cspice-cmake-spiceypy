@@ -208,9 +208,11 @@ if(DEFINED EMSCRIPTEN)
     -Wno-deprecated-non-prototype
     -Wno-parentheses
     -Wno-int-conversion)
+  # for the static library
   target_link_options(cspice PRIVATE
-    "-sSIDE_MODULE=1"
-    "-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports.json"
+    "-sSIDE_MODULE=2"
+    "-sMODULARIZE"
+    "-sEXPORTED_FUNCTIONS=@${CMAKE_SOURCE_DIR}/cspice_exports.json"
     "-sINITIAL_MEMORY=134217728"   # 128 MB
     "-sALLOW_MEMORY_GROWTH=1"
     "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
@@ -222,11 +224,15 @@ if(DEFINED EMSCRIPTEN)
   )
   set_property(TARGET cspice PROPERTY LINK_LIBRARIES "")
 
+  # Path to the wasm output in the build tree
+  set(CSPICE_WASM ${CMAKE_CURRENT_BINARY_DIR}/libcspice.wasm)
+
   add_custom_command(
-    OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/libcspice.wasm
+    OUTPUT ${CSPICE_WASM}
     COMMAND ${CMAKE_C_COMPILER}
       -sSIDE_MODULE=2
-      -sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports.json
+      -sMODULARIZE
+      -sEXPORTED_FUNCTIONS=@${CMAKE_SOURCE_DIR}/cspice_exports.json
       -sINITIAL_MEMORY=134217728
       -sALLOW_MEMORY_GROWTH=1
       -sMEMORY_GROWTH_GEOMETRIC_STEP=1.15
@@ -235,15 +241,19 @@ if(DEFINED EMSCRIPTEN)
       -sFORCE_FILESYSTEM=1
       -sRETAIN_COMPILER_SETTINGS=1
       -O2
-      -o ${CMAKE_CURRENT_LIBDIR}/libcspice.wasm
+      -o ${CSPICE_WASM}
       $<TARGET_FILE:cspice>
     DEPENDS cspice
   )
 
   # Hook it into the build so `make all` / `ninja` produces libcspice.wasm
   add_custom_target(cspice_wasm ALL
-    DEPENDS ${CMAKE_CURRENT_LIBDIR}/libcspice.wasm
+    DEPENDS ${CSPICE_WASM}
   )
+
+  # Install the wasm next to the other libs
+  install(FILES ${CSPICE_WASM}
+          DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 
 elseif(APPLE)
@@ -365,7 +375,10 @@ if(BUILD_TESTING)
       ${CSPICE_SOURCE_ROOT}/include
     )
     target_compile_options(test_cspice PRIVATE -fPIC)
-    target_link_options(test_cspice PRIVATE -sMAIN_MODULE=2 -sINITIAL_MEMORY=134217728)
+    target_link_options(test_cspice PRIVATE -sMAIN_MODULE=2 -sINITIAL_MEMORY=134217728 )
+    target_link_libraries(test_cspice PRIVATE
+      ${CMAKE_CURRENT_BINARY_DIR}/libcspice.wasm
+    )
     add_test(NAME cspice_test COMMAND node ${CMAKE_CURRENT_BINARY_DIR}/test_cspice.js)
   else()
     target_link_libraries(test_cspice PRIVATE cspice)
