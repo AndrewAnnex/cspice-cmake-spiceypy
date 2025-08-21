@@ -210,9 +210,7 @@ if(DEFINED EMSCRIPTEN)
     -Wno-int-conversion)
   # for the static library
   target_link_options(cspice PRIVATE
-    "-sSIDE_MODULE=2"
-    "-sMODULARIZE"
-    "-sEXPORTED_FUNCTIONS=@${CMAKE_SOURCE_DIR}/cspice_exports.json"
+    "-sSIDE_MODULE=1"
     "-sINITIAL_MEMORY=134217728"   # 128 MB
     "-sALLOW_MEMORY_GROWTH=1"
     "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
@@ -230,9 +228,7 @@ if(DEFINED EMSCRIPTEN)
   add_custom_command(
     OUTPUT ${CSPICE_WASM}
     COMMAND ${CMAKE_C_COMPILER}
-      -sSIDE_MODULE=2
-      -sMODULARIZE
-      -sEXPORTED_FUNCTIONS=@${CMAKE_SOURCE_DIR}/cspice_exports.json
+      -sSIDE_MODULE=1
       -sINITIAL_MEMORY=134217728
       -sALLOW_MEMORY_GROWTH=1
       -sMEMORY_GROWTH_GEOMETRIC_STEP=1.15
