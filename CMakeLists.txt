@@ -337,20 +337,12 @@ if(BUILD_TESTING)
       C_STANDARD_REQUIRED ON
       C_EXTENSIONS OFF
   )
+  target_link_libraries(test_cspice PRIVATE cspice)
   if(DEFINED EMSCRIPTEN)
-    add_dependencies(test_cspice cspice)
-    set_target_properties(test_cspice PROPERTIES SUFFIX ".js")
-    target_include_directories(test_cspice PRIVATE
-      ${CSPICE_SOURCE_ROOT}/include
-    )
     target_compile_options(test_cspice PRIVATE -fPIC)
     target_link_options(test_cspice PRIVATE -sMAIN_MODULE=2 -sINITIAL_MEMORY=134217728 )
-    target_link_libraries(test_cspice PRIVATE
-      ${CMAKE_CURRENT_BINARY_DIR}/libcspice.wasm
-    )
     add_test(NAME cspice_test COMMAND node ${CMAKE_CURRENT_BINARY_DIR}/test_cspice.js)
   else()
-    target_link_libraries(test_cspice PRIVATE cspice)
     add_test(NAME cspice_test COMMAND test_cspice WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
   endif()
 endif()
