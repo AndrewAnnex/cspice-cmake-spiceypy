@@ -210,19 +210,34 @@ if(DEFINED EMSCRIPTEN)
     -Wno-parentheses
     -Wno-int-conversion)
   # for the shared library
-  target_link_options(cspice PRIVATE -shared -Wl,-soname,libcspice.wasm
-    "-sSIDE_MODULE=1"
-    "-sEXPORT_ALL=1"
-    #"-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports.json"
-    "-sINITIAL_MEMORY=134217728"   # 128 MB
-    "-sALLOW_MEMORY_GROWTH=1"
-    "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
-    "-sNO_EXIT_RUNTIME=1"
-    "-sWARN_ON_UNDEFINED_SYMBOLS=1"
-    "-sFORCE_FILESYSTEM=1"
-    "-sRETAIN_COMPILER_SETTINGS=1"
-    "-O2"
-  )
+  if(DEFINED CSPICE_EMSCRIPTEN_SIDE_MODULE_1)
+    target_link_options(cspice PRIVATE -shared -Wl
+      "-sSIDE_MODULE=1"
+      "-sEXPORT_ALL=1"
+      "-sINITIAL_MEMORY=134217728"   # 128 MB
+      "-sALLOW_MEMORY_GROWTH=1"
+      "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
+      "-sNO_EXIT_RUNTIME=1"
+      "-sWARN_ON_UNDEFINED_SYMBOLS=1"
+      "-sFORCE_FILESYSTEM=1"
+      "-sRETAIN_COMPILER_SETTINGS=1"
+      "-O2"
+    )
+  else()
+    target_link_options(cspice PRIVATE -shared -Wl
+      "-sSIDE_MODULE=2"
+      "-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports.json"
+      "-sINITIAL_MEMORY=134217728"   # 128 MB
+      "-sALLOW_MEMORY_GROWTH=1"
+      "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
+      "-sNO_EXIT_RUNTIME=1"
+      "-sWARN_ON_UNDEFINED_SYMBOLS=1"
+      "-sFORCE_FILESYSTEM=1"
+      "-sRETAIN_COMPILER_SETTINGS=1"
+      "-O2"
+    )
+  endif()
+
   set_property(TARGET cspice PROPERTY LINK_LIBRARIES "")
 
 elseif(APPLE)
