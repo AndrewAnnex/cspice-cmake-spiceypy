@@ -53,7 +53,18 @@ jobs:
         run: cmake --build build --parallel 4 --config Release
 
       - name: Show properties of the build folder
+        shell: bash
         run: ls -lahtr ./build
+
+      - name: Upload Shared Library Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: cspice-shared-lib-${{ matrix.os }}-${{ strategy.job-index }}
+          path: |
+            ./build/*.so
+            ./build/*.dylib
+            ./build/*.wasm
+            ./build/*.dll
 
       - name: Run Tests on Windows
         if: ${{ contains(matrix.os, 'windows') }}
