@@ -32,7 +32,7 @@ jobs:
       fail-fast: false
       max-parallel: 5
     runs-on: ${{ matrix.runs-on }}
-    name: Build Wheels natively for ${{ matrix.os }}
+    name: Build cmake natively for ${{ matrix.os }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5
