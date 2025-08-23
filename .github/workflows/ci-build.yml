@@ -52,6 +52,9 @@ jobs:
       - name: Build with CMake
         run: cmake --build build --parallel 4 --config Release
 
+      - name: Show properties of the build folder
+        run: ls -lahtr ./build
+
       - name: Run Tests on Windows
         if: ${{ contains(matrix.os, 'windows') }}
         run: |
