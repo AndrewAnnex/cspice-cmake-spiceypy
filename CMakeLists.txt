@@ -163,7 +163,9 @@ file(GLOB_RECURSE CSPICE_SOURCES
 # Create the shared library target.
 # -----------------------------------------------------------------------------
 if(DEFINED EMSCRIPTEN)
-  add_library(cspice STATIC ${CSPICE_SOURCES})
+  # found out that this allowed us to avoid the custom target and to build the shared library as normal
+  set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
+  add_library(cspice SHARED ${CSPICE_SOURCES})
 else()
   add_library(cspice SHARED ${CSPICE_SOURCES})
 endif()
@@ -199,19 +201,19 @@ endif()
 
 if(DEFINED EMSCRIPTEN)
   message(STATUS "Configuring CSPICE for Emscripten")
-  #set_target_properties(cspice PROPERTIES SUFFIX ".wasm")
+  set_target_properties(cspice PROPERTIES SUFFIX ".wasm")
   target_compile_options(cspice PRIVATE 
-    -fPIC 
     -ansi 
     -Wno-implicit-function-declaration 
     -Wno-shift-op-parentheses
     -Wno-deprecated-non-prototype
     -Wno-parentheses
     -Wno-int-conversion)
-  # for the static library
-  target_link_options(cspice PRIVATE
-    "-sSIDE_MODULE=2"
-    "-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports.json"
+  # for the shared library
+  target_link_options(cspice PRIVATE -shared -Wl,-soname,libcspice.wasm
+    "-sSIDE_MODULE=1"
+    "-sEXPORT_ALL=1"
+    #"-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports.json"
     "-sINITIAL_MEMORY=134217728"   # 128 MB
     "-sALLOW_MEMORY_GROWTH=1"
     "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
@@ -222,37 +224,6 @@ if(DEFINED EMSCRIPTEN)
     "-O2"
   )
   set_property(TARGET cspice PROPERTY LINK_LIBRARIES "")
-
-  # Path to the wasm output in the build tree
-  set(CSPICE_WASM ${CMAKE_CURRENT_BINARY_DIR}/libcspice.wasm)
-
-  add_custom_command(
-    OUTPUT ${CSPICE_WASM}
-    COMMAND ${CMAKE_C_COMPILER}
-      -sSIDE_MODULE=2
-      -sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports.json
-      -sINITIAL_MEMORY=134217728
-      -sALLOW_MEMORY_GROWTH=1
-      -sMEMORY_GROWTH_GEOMETRIC_STEP=1.15
-      -sNO_EXIT_RUNTIME=1
-      -sWARN_ON_UNDEFINED_SYMBOLS=1
-      -sFORCE_FILESYSTEM=1
-      -sRETAIN_COMPILER_SETTINGS=1
-      -O2
-      -o ${CSPICE_WASM}
-      $<TARGET_FILE:cspice>
-    DEPENDS cspice
-  )
-
-  # Hook it into the build so `make all` / `ninja` produces libcspice.wasm
-  add_custom_target(cspice_wasm ALL
-    DEPENDS ${CSPICE_WASM}
-  )
-
-  # Install the wasm next to the other libs
-  install(FILES ${CSPICE_WASM}
-          DESTINATION ${CMAKE_INSTALL_LIBDIR})
-
 
 elseif(APPLE)
   message(STATUS "Configuring CSPICE for Apple")
@@ -367,7 +338,7 @@ if(BUILD_TESTING)
       C_EXTENSIONS OFF
   )
   if(DEFINED EMSCRIPTEN)
-    add_dependencies(test_cspice cspice_wasm)
+    add_dependencies(test_cspice cspice)
     set_target_properties(test_cspice PROPERTIES SUFFIX ".js")
     target_include_directories(test_cspice PRIVATE
       ${CSPICE_SOURCE_ROOT}/include
