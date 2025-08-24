@@ -162,7 +162,13 @@ file(GLOB_RECURSE CSPICE_SOURCES
 # -----------------------------------------------------------------------------
 # Create the shared library target.
 # -----------------------------------------------------------------------------
-add_library(cspice SHARED ${CSPICE_SOURCES})
+if(DEFINED EMSCRIPTEN)
+  # found out that this allowed us to avoid the custom target and to build the shared library as normal
+  set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
+  add_library(cspice SHARED ${CSPICE_SOURCES})
+else()
+  add_library(cspice SHARED ${CSPICE_SOURCES})
+endif()
 
 target_include_directories(cspice 
   PUBLIC 
@@ -186,9 +192,56 @@ set_target_properties(cspice PROPERTIES
 # -----------------------------------------------------------------------------
 # Platform-specific compile and link flags.
 # -----------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+# Link math library
+#-------------------------------------------------------------------------------
+if(NOT MSVC AND NOT DEFINED EMSCRIPTEN)
+  target_link_libraries(cspice PRIVATE m)
+endif()
 
-# Common compile options for Unix-like systems (macOS + Linux/BSD)
-if(APPLE OR UNIX)
+if(DEFINED EMSCRIPTEN)
+  message(STATUS "Configuring CSPICE for Emscripten")
+  set_target_properties(cspice PROPERTIES SUFFIX ".wasm")
+  target_compile_options(cspice PRIVATE 
+    -ansi 
+    -Wno-implicit-function-declaration 
+    -Wno-shift-op-parentheses
+    -Wno-deprecated-non-prototype
+    -Wno-parentheses
+    -Wno-int-conversion)
+  # for the shared library
+  if(DEFINED CSPICE_EMSCRIPTEN_SIDE_MODULE_1)
+    target_link_options(cspice PRIVATE -shared -Wl
+      "-sSIDE_MODULE=1"
+      "-sEXPORT_ALL=1"
+      "-sINITIAL_MEMORY=134217728"   # 128 MB
+      "-sALLOW_MEMORY_GROWTH=1"
+      "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
+      "-sNO_EXIT_RUNTIME=1"
+      "-sWARN_ON_UNDEFINED_SYMBOLS=1"
+      "-sFORCE_FILESYSTEM=1"
+      "-sRETAIN_COMPILER_SETTINGS=1"
+      "-O2"
+    )
+  else()
+    target_link_options(cspice PRIVATE -shared -Wl
+      "-sSIDE_MODULE=2"
+      "-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports.json"
+      "-sINITIAL_MEMORY=134217728"   # 128 MB
+      "-sALLOW_MEMORY_GROWTH=1"
+      "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
+      "-sNO_EXIT_RUNTIME=1"
+      "-sWARN_ON_UNDEFINED_SYMBOLS=1"
+      "-sFORCE_FILESYSTEM=1"
+      "-sRETAIN_COMPILER_SETTINGS=1"
+      "-O2"
+    )
+  endif()
+
+  set_property(TARGET cspice PROPERTY LINK_LIBRARIES "")
+
+elseif(APPLE)
+  message(STATUS "Configuring CSPICE for Apple")
   target_compile_options(cspice PRIVATE 
     -ansi
     -DVOID=void  
@@ -199,22 +252,28 @@ if(APPLE OR UNIX)
     -Wno-shift-op-parentheses
     -Wno-parentheses
   )
-endif()
+  target_link_options(cspice PRIVATE -dynamiclib -install_name "@rpath/libcspice.dylib")
 
-if(APPLE)
-  target_link_options(cspice PRIVATE
-                      -dynamiclib
-                      -install_name "@rpath/libcspice.dylib")
-elseif(UNIX) # Linux, BSD, etc. (but not macOS)
-  target_link_options(cspice PRIVATE
-                      -shared
-                      -Wl,-soname,libcspice.so)
-endif()
+elseif(UNIX)
+  message(STATUS "Configuring CSPICE for UNIX")
+  target_compile_options(cspice PRIVATE 
+    -ansi
+    -DVOID=void  
+    -UKR_headers 
+    -Wimplicit-int
+    -Wimplicit-function-declaration
+    -Wno-deprecated-non-prototype
+    -Wno-shift-op-parentheses
+    -Wno-parentheses
+  )
+  target_link_options(cspice PRIVATE -shared -Wl,-soname,libcspice.so)
 
-# -----------------------------------------------------------------------------
-# Windows-specific configuration: Use a .def file for symbol exports.
-# -----------------------------------------------------------------------------
-if(MSVC)
+elseif(MSVC)
+  # -----------------------------------------------------------------------------
+  # Windows-specific configuration: Use a .def file for symbol exports.
+  # Can replace with set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS 1)
+  # -----------------------------------------------------------------------------
+  message(STATUS "Configuring CSPICE for Windows MSVC")
   target_compile_definitions(cspice PRIVATE _COMPLEX_DEFINED MSDOS OMIT_BLANK_CC NON_ANSI_STDIO)
   target_compile_options(cspice PRIVATE /nologo)
   set(CSPICE_DEF_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cspice.def")
@@ -224,18 +283,14 @@ if(MSVC)
   else()
     message(WARNING "CSPICE .def file not found: ${CSPICE_DEF_FILE}")
   endif()
+
 elseif(WIN32)
-  # MinGW/other Windows GCC
+  message(STATUS "Configuring CSPICE for Windows MinGW/ETC")
   target_compile_definitions(cspice PRIVATE _COMPLEX_DEFINED MSDOS OMIT_BLANK_CC NON_ANSI_STDIO)
-endif()
 
-
-#-------------------------------------------------------------------------------
-# Link math library
-#-------------------------------------------------------------------------------
-if(NOT MSVC)
-  target_link_libraries(cspice PRIVATE m)
 endif()
+# DONE WITH PLATFORM SPECIFIC THINGS
+
 
 # -----------------------------------------------------------------------------
 # Create a namespaced alias so downstream can do “cspice::cspice”
@@ -254,9 +309,7 @@ install(TARGETS cspice
 )
 
 # Install the header directory 
-install(DIRECTORY ${CSPICE_SOURCE_ROOT}/include/
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cspice
-)
+install(DIRECTORY ${CSPICE_SOURCE_ROOT}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cspice)
 
 #-------------------------------------------------------------------------------
 # CMake package configuration
@@ -294,13 +347,17 @@ install(FILES
 # -----------------------------------------------------------------------------
 if(BUILD_TESTING)
   add_executable(test_cspice test_cspice.c)
-  target_link_libraries(test_cspice PRIVATE cspice)
   set_target_properties(test_cspice PROPERTIES
       C_STANDARD 11
       C_STANDARD_REQUIRED ON
       C_EXTENSIONS OFF
   )
-  add_test(NAME cspice_test
-           COMMAND test_cspice
-           WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+  target_link_libraries(test_cspice PRIVATE cspice)
+  if(DEFINED EMSCRIPTEN)
+    target_compile_options(test_cspice PRIVATE -fPIC)
+    target_link_options(test_cspice PRIVATE -sMAIN_MODULE=2 -sINITIAL_MEMORY=134217728 )
+    add_test(NAME cspice_test COMMAND node ${CMAKE_CURRENT_BINARY_DIR}/test_cspice.js)
+  else()
+    add_test(NAME cspice_test COMMAND test_cspice WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+  endif()
 endif()
