@@ -48,23 +48,24 @@ else()
   # -----------------------------------------------------------------------------
   if(WIN32)
     set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}/C/PC_Windows_VisualC_64bit/packages/cspice.zip")
+    set(CSPICE_ARCHIVE_HASH "SHA256=98d60b814b412fa55294aeaaeb7dab46d849cc87a8b709ffe835d08de17625dc")
   elseif(APPLE)
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
       set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}/C/MacM1_OSX_clang_64bit/packages/cspice.tar.Z")
+      set(CSPICE_ARCHIVE_HASH "SHA256=0deae048443e11ca4d093cac651d9785d4f2594631a183d85a3d58949f4d0aa9")
     else()
       set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}/C/MacIntel_OSX_AppleC_64bit/packages/cspice.tar.Z")
+      set(CSPICE_ARCHIVE_HASH "SHA256=6f4980445fee4d363dbce6f571819f4a248358d2c1bebca47e0743eedfe9935e")
     endif()
   else() # Assuming Linux or similar UNIX
-    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-      set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}/C/PC_Linux_GCC_64bit/packages/cspice.tar.Z")
-    else()
-      set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}/C/PC_Linux_GCC_64bit/packages/cspice.tar.Z")
-    endif()
+    set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}/C/PC_Linux_GCC_64bit/packages/cspice.tar.Z")
+    set(CSPICE_ARCHIVE_HASH "SHA256=60a95b51a6472f1afe7e40d77ebdee43c12bb5b8823676ccc74692ddfede06ce")
   endif()
   message(STATUS "No local CSPICE source provided. Downloading from: ${CSPICE_ARCHIVE_URL}")
   FetchContent_Declare(
     cspice_src
     URL ${CSPICE_ARCHIVE_URL}
+    URL_HASH ${CSPICE_ARCHIVE_HASH}
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     SOURCE_DIR ${CMAKE_BINARY_DIR}/cspice-src
   )
