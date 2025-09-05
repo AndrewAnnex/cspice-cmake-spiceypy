@@ -118,7 +118,7 @@ else()
   # General function to patch all CSPICE .c files for one symbol
   # -------------------------------------------------------------------
   function(fix_f2c_symbol symbol good_decl_pattern bad_decl_pattern)
-      file(GLOB_RECURSE CSPICE_CS ${CSPICE_SOURCE_ROOT}/src/cspice/*.c)
+      file(GLOB CSPICE_CS ${CSPICE_SOURCE_ROOT}/src/cspice/*.c)
   
       foreach(src ${CSPICE_CS})
           file(READ "${src}" CONTENTS)
@@ -180,7 +180,7 @@ endif()
 # -----------------------------------------------------------------------------
 
 # Locate the CSPICE source files.
-file(GLOB_RECURSE CSPICE_SOURCES CONFIGURE_DEPENDS
+file(GLOB CSPICE_SOURCES 
   ${CSPICE_SOURCE_ROOT}/src/cspice/*.c
 )
 
@@ -216,7 +216,7 @@ install(DIRECTORY ${CSPICE_SOURCE_ROOT}/include/ DESTINATION ${CMAKE_INSTALL_INC
 # -----------------------------------------------------------------------------
 if(BUILD_EXECUTABLES)
   # Locate the CSUPPORT source files.
-  file(GLOB_RECURSE CSUPPORT_SOURCES CONFIGURE_DEPENDS
+  file(GLOB CSUPPORT_SOURCES 
     ${CSPICE_SOURCE_ROOT}/src/csupport/*.c
   )
   
