@@ -42,11 +42,11 @@ jobs:
       
       - name: Configure CMake Normally
         if: ${{ !contains(matrix.os, 'emscripten') }}
-        run: cmake -B build -S . -G Ninja 
+        run: cmake -B build -S . -G Ninja -DBUILD_TESTING=on -DBUILD_EXECUTABLES=ON 
       
       - name: Configure CMake Emscripten
         if: ${{ contains(matrix.os, 'emscripten') }}
-        run: emcmake cmake -B build -S . -G Ninja 
+        run: emcmake cmake -B build -S . -G Ninja -DBUILD_TESTING=on
       
       - name: Build with CMake
         run: cmake --build build --parallel 4 --config Release
