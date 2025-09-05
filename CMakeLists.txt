@@ -369,7 +369,10 @@ if(BUILD_EXECUTABLES)
        POSITION_INDEPENDENT_CODE ON
        VERSION                   ${PROJECT_VERSION}
     )
-    target_link_libraries(${exec_name} PRIVATE CSPICE::cspice CSPICE::csupport) # csupport already depends on cspice
+    target_link_libraries(${exec_name} PRIVATE CSPICE::cspice CSPICE::csupport) 
+    if(NOT MSVC AND NOT DEFINED EMSCRIPTEN)
+      target_link_libraries(${target} PRIVATE m)
+    endif()
 
     # # Install and export so downstream can use cspice::chronos, etc.
     install(TARGETS ${exec_name}
