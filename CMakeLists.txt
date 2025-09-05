@@ -166,6 +166,14 @@ else()
 
 endif()
 
+# -----------------------------------------------------------------------------
+# Global MSVC Flags
+# -----------------------------------------------------------------------------
+if(MSVC)
+  # Enable automatic export of all symbols for all Windows DLLs
+  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+
 
 # -----------------------------------------------------------------------------
 # CSPICE
