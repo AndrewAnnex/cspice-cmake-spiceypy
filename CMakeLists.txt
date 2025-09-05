@@ -14,6 +14,12 @@ project(cspice
 # -----------------------------------------------------------------------------
 set(CSPICE_VERSION "N0067")
 
+# -----------------------------------------------------------------------------
+# Define any options 
+# -----------------------------------------------------------------------------
+option(BUILD_TESTING "Build the CSPICE simple c file test" OFF)
+option(BUILD_EXECUTABLES "Build and install CSPICE example executables" OFF)
+
 #-------------------------------------------------------------------------------
 # 2) Build type default
 #-------------------------------------------------------------------------------
@@ -35,6 +41,13 @@ include(CTest)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(FetchContent)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(CspiceCommon)
+
+if(DEFINED EMSCRIPTEN)
+  # found out that this allowed us to avoid the custom target and to build the shared library as normal
+  set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
+endif()
 
 # -----------------------------------------------------------------------------
 # Determine whether to use a local CSPICE source or to download it.
@@ -153,165 +166,74 @@ else()
 
 endif()
 
+
 # -----------------------------------------------------------------------------
-# 5) Locate the CSPICE source files.
+# CSPICE
 # -----------------------------------------------------------------------------
-file(GLOB_RECURSE CSPICE_SOURCES
+
+# Locate the CSPICE source files.
+file(GLOB_RECURSE CSPICE_SOURCES CONFIGURE_DEPENDS
   ${CSPICE_SOURCE_ROOT}/src/cspice/*.c
 )
 
-# -----------------------------------------------------------------------------
 # Create the shared library target.
-# -----------------------------------------------------------------------------
-if(DEFINED EMSCRIPTEN)
-  # found out that this allowed us to avoid the custom target and to build the shared library as normal
-  set_property(GLOBAL PROPERTY TARGET_SUPPORTS_SHARED_LIBS TRUE)
-  add_library(cspice SHARED ${CSPICE_SOURCES})
-else()
-  add_library(cspice SHARED ${CSPICE_SOURCES})
-endif()
+add_library(cspice SHARED ${CSPICE_SOURCES})
 
-target_include_directories(cspice 
-  PUBLIC 
+target_include_directories(cspice PUBLIC 
   $<BUILD_INTERFACE:${CSPICE_SOURCE_ROOT}/include>
   $<INSTALL_INTERFACE:include/cspice>
 )
 
-# -----------------------------------------------------------------------------
-# Additional compile definitions, flags, or versioning.
-# -----------------------------------------------------------------------------
-target_compile_definitions(cspice PRIVATE -DNDEBUG)
-set_target_properties(cspice PROPERTIES
-    C_STANDARD 90
-    C_STANDARD_REQUIRED       ON
-    C_EXTENSIONS              ON  
-    POSITION_INDEPENDENT_CODE ON
-    VERSION                   ${PROJECT_VERSION}
-    # No SOVERSION: CSPICE doesn’t guarantee ABI compatibility
-)
+# Configure using the custom command that handles the platform specific stuff
+configure_platform(cspice)
 
-# -----------------------------------------------------------------------------
-# Platform-specific compile and link flags.
-# -----------------------------------------------------------------------------
-#-------------------------------------------------------------------------------
-# Link math library
-#-------------------------------------------------------------------------------
-if(NOT MSVC AND NOT DEFINED EMSCRIPTEN)
-  target_link_libraries(cspice PRIVATE m)
-endif()
-
-if(DEFINED EMSCRIPTEN)
-  message(STATUS "Configuring CSPICE for Emscripten")
-  set_target_properties(cspice PROPERTIES SUFFIX ".wasm")
-  target_compile_options(cspice PRIVATE 
-    -ansi 
-    -Wno-implicit-function-declaration 
-    -Wno-shift-op-parentheses
-    -Wno-deprecated-non-prototype
-    -Wno-parentheses
-    -Wno-int-conversion)
-  # for the shared library
-  if(DEFINED CSPICE_EMSCRIPTEN_SIDE_MODULE_1)
-    target_link_options(cspice PRIVATE -shared -Wl
-      "-sSIDE_MODULE=1"
-      "-sEXPORT_ALL=1"
-      "-sINITIAL_MEMORY=134217728"   # 128 MB
-      "-sALLOW_MEMORY_GROWTH=1"
-      "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
-      "-sNO_EXIT_RUNTIME=1"
-      "-sWARN_ON_UNDEFINED_SYMBOLS=1"
-      "-sFORCE_FILESYSTEM=1"
-      "-sRETAIN_COMPILER_SETTINGS=1"
-      "-O2"
-    )
-  else()
-    target_link_options(cspice PRIVATE -shared -Wl
-      "-sSIDE_MODULE=2"
-      "-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports.json"
-      "-sINITIAL_MEMORY=134217728"   # 128 MB
-      "-sALLOW_MEMORY_GROWTH=1"
-      "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
-      "-sNO_EXIT_RUNTIME=1"
-      "-sWARN_ON_UNDEFINED_SYMBOLS=1"
-      "-sFORCE_FILESYSTEM=1"
-      "-sRETAIN_COMPILER_SETTINGS=1"
-      "-O2"
-    )
-  endif()
-
-  set_property(TARGET cspice PROPERTY LINK_LIBRARIES "")
-
-elseif(APPLE)
-  message(STATUS "Configuring CSPICE for Apple")
-  target_compile_options(cspice PRIVATE 
-    -ansi
-    -DVOID=void  
-    -UKR_headers 
-    -Wimplicit-int
-    -Wimplicit-function-declaration
-    -Wno-deprecated-non-prototype
-    -Wno-shift-op-parentheses
-    -Wno-parentheses
-  )
-  target_link_options(cspice PRIVATE -dynamiclib -install_name "@rpath/libcspice.dylib")
-
-elseif(UNIX)
-  message(STATUS "Configuring CSPICE for UNIX")
-  target_compile_options(cspice PRIVATE 
-    -ansi
-    -DVOID=void  
-    -UKR_headers 
-    -Wimplicit-int
-    -Wimplicit-function-declaration
-    -Wno-deprecated-non-prototype
-    -Wno-shift-op-parentheses
-    -Wno-parentheses
-  )
-  target_link_options(cspice PRIVATE -shared -Wl,-soname,libcspice.so)
-
-elseif(MSVC)
-  # -----------------------------------------------------------------------------
-  # Windows-specific configuration: Use a .def file for symbol exports.
-  # Can replace with set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS 1)
-  # -----------------------------------------------------------------------------
-  message(STATUS "Configuring CSPICE for Windows MSVC")
-  target_compile_definitions(cspice PRIVATE _COMPLEX_DEFINED MSDOS OMIT_BLANK_CC NON_ANSI_STDIO)
-  target_compile_options(cspice PRIVATE /nologo)
-  set(CSPICE_DEF_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cspice.def")
-  if(EXISTS ${CSPICE_DEF_FILE})
-    message(STATUS "Using CSPICE .def file: ${CSPICE_DEF_FILE}")
-    target_link_options(cspice PRIVATE "/DEF:${CSPICE_DEF_FILE}")
-  else()
-    message(WARNING "CSPICE .def file not found: ${CSPICE_DEF_FILE}")
-  endif()
-
-elseif(WIN32)
-  message(STATUS "Configuring CSPICE for Windows MinGW/ETC")
-  target_compile_definitions(cspice PRIVATE _COMPLEX_DEFINED MSDOS OMIT_BLANK_CC NON_ANSI_STDIO)
-
-endif()
-# DONE WITH PLATFORM SPECIFIC THINGS
-
-
-# -----------------------------------------------------------------------------
 # Create a namespaced alias so downstream can do “cspice::cspice”
-# -----------------------------------------------------------------------------
 add_library(CSPICE::cspice ALIAS cspice)
 
-# -----------------------------------------------------------------------------
 # Installs for cspice headers/shared library etc
-# -----------------------------------------------------------------------------
 install(TARGETS cspice 
     EXPORT CSPICETargets
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}       # Windows .dll
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}       # Windows .dll TODO WHY again is this bindir?
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}       # Unix .so / macOS .dylib
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}       # static / import libs
     PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cspice
 )
 
-# Install the header directory 
+# Install the header directory once
 install(DIRECTORY ${CSPICE_SOURCE_ROOT}/include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cspice)
 
+
+# -----------------------------------------------------------------------------
+# CSUPPORT
+# -----------------------------------------------------------------------------
+if(BUILD_EXECUTABLES)
+  # Locate the CSUPPORT source files.
+  file(GLOB_RECURSE CSUPPORT_SOURCES CONFIGURE_DEPENDS
+    ${CSPICE_SOURCE_ROOT}/src/csupport/*.c
+  )
+  
+  # Create the shared library target.
+  add_library(csupport SHARED ${CSUPPORT_SOURCES})
+  target_link_libraries(csupport PRIVATE CSPICE::cspice)
+  target_include_directories(csupport PUBLIC 
+    $<BUILD_INTERFACE:${CSPICE_SOURCE_ROOT}/include>
+    $<INSTALL_INTERFACE:include/cspice>
+  )
+  
+  # Configure using the custom command that handles the platform specific stuff
+  configure_platform(csupport)
+  
+  # Create a namespaced alias so downstream can do “cspice::csupport”
+  add_library(CSPICE::csupport ALIAS csupport)
+  
+  # Installs for cspice headers/shared library etc
+  install(TARGETS csupport 
+      EXPORT CSPICETargets
+      RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}       # Windows
+      LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}       # Unix .so / macOS .dylib
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}       # static / import libs
+  )
+endif()
 #-------------------------------------------------------------------------------
 # CMake package configuration
 #-------------------------------------------------------------------------------
@@ -353,7 +275,7 @@ if(BUILD_TESTING)
       C_STANDARD_REQUIRED ON
       C_EXTENSIONS OFF
   )
-  target_link_libraries(test_cspice PRIVATE cspice)
+  target_link_libraries(test_cspice PRIVATE CSPICE::cspice)
   if(DEFINED EMSCRIPTEN)
     target_compile_options(test_cspice PRIVATE -fPIC)
     target_link_options(test_cspice PRIVATE -sMAIN_MODULE=2 -sINITIAL_MEMORY=134217728 )
@@ -362,3 +284,108 @@ if(BUILD_TESTING)
     add_test(NAME cspice_test COMMAND test_cspice WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
   endif()
 endif()
+
+# --------------------------------------------------------------------------------------
+# Optional Build Executables, only build & register tests if BUILD_EXECUTABLES is ON
+# --------------------------------------------------------------------------------------
+set(CSPICE_EXECUTABLE_DIRS
+    "${CSPICE_SOURCE_ROOT}/src/brief_c"
+    "${CSPICE_SOURCE_ROOT}/src/chrnos_c"
+    "${CSPICE_SOURCE_ROOT}/src/ckbref_c"
+    "${CSPICE_SOURCE_ROOT}/src/commnt_c"
+    "${CSPICE_SOURCE_ROOT}/src/dskbrief_c"
+    "${CSPICE_SOURCE_ROOT}/src/dskexp_c"
+    "${CSPICE_SOURCE_ROOT}/src/frmdif_c"
+    "${CSPICE_SOURCE_ROOT}/src/inspkt_c"
+    "${CSPICE_SOURCE_ROOT}/src/mkdsk_c"
+    "${CSPICE_SOURCE_ROOT}/src/mkspk_c"
+    "${CSPICE_SOURCE_ROOT}/src/msopck_c"
+    "${CSPICE_SOURCE_ROOT}/src/spacit_c"
+    "${CSPICE_SOURCE_ROOT}/src/spkdif_c"
+    "${CSPICE_SOURCE_ROOT}/src/spkmrg_c"
+    "${CSPICE_SOURCE_ROOT}/src/tobin_c"
+    "${CSPICE_SOURCE_ROOT}/src/toxfr_c"
+    "${CSPICE_SOURCE_ROOT}/src/versn_c"
+)
+
+
+if(BUILD_EXECUTABLES)
+  foreach(exec_dir IN LISTS CSPICE_EXECUTABLE_DIRS)
+    # Find the .pgm file (the real program name comes from this)
+    file(GLOB pgm_files CONFIGURE_DEPENDS "${exec_dir}/*.pgm")
+    set_source_files_properties(${pgm_files} PROPERTIES LANGUAGE C)
+
+    if(NOT pgm_files)
+      message(STATUS "Skipping ${exec_dir}: no .pgm file found")
+      continue()
+    endif()
+
+    list(LENGTH pgm_files pgm_count)
+    if(pgm_count GREATER 1)
+      message(FATAL_ERROR "More than one .pgm file in ${exec_dir}, script assumes only one")
+    endif()
+
+    get_filename_component(exec_name "${pgm_files}" NAME_WE) # basename w/o .pgm
+
+    # Step 1: gather sources
+    file(GLOB local_c_sources CONFIGURE_DEPENDS "${exec_dir}/*.c")
+    file(GLOB pgm_sources CONFIGURE_DEPENDS "${exec_dir}/*.pgm")
+    set_source_files_properties(${pgm_sources} PROPERTIES LANGUAGE C)
+
+    # Object library for the local code
+    add_library(${exec_name}_objs OBJECT ${local_c_sources} ${pgm_sources})
+    set_target_properties(${exec_name}_objs PROPERTIES
+       C_STANDARD 90
+       C_STANDARD_REQUIRED       ON
+       C_EXTENSIONS              ON  
+       POSITION_INDEPENDENT_CODE ON
+       VERSION                   ${PROJECT_VERSION}
+    )
+    target_include_directories(${exec_name}_objs PRIVATE ${CSPICE_SOURCE_ROOT}/include)
+
+    # Step 2: main.x object
+    set(main_x "${exec_dir}/main.x")
+    set_source_files_properties(${main_x} PROPERTIES LANGUAGE C)
+
+    add_library(${exec_name}_main OBJECT ${main_x})
+    set_target_properties(${exec_name}_main PROPERTIES
+       C_STANDARD 90
+       C_STANDARD_REQUIRED       ON
+       C_EXTENSIONS              ON  
+       POSITION_INDEPENDENT_CODE ON
+       VERSION                   ${PROJECT_VERSION}
+    )
+    target_include_directories(${exec_name}_main PRIVATE ${CSPICE_SOURCE_ROOT}/include)
+
+    # Step 3: link everything into an executable
+    add_executable(${exec_name}
+      $<TARGET_OBJECTS:${exec_name}_objs>
+      $<TARGET_OBJECTS:${exec_name}_main>
+    )
+    set_target_properties(${exec_name} PROPERTIES
+       C_STANDARD 90
+       C_STANDARD_REQUIRED       ON
+       C_EXTENSIONS              ON  
+       POSITION_INDEPENDENT_CODE ON
+       VERSION                   ${PROJECT_VERSION}
+    )
+    target_link_libraries(${exec_name} PRIVATE CSPICE::cspice CSPICE::csupport) 
+    if(NOT MSVC AND NOT DEFINED EMSCRIPTEN)
+      target_link_libraries(${exec_name} PRIVATE m)
+    endif()
+    if(MINGW)
+      target_link_options(${exec_name} PRIVATE -Wl,--allow-multiple-definition)
+    elseif(MSVC)
+      target_link_options(${exec_name} PRIVATE "/FORCE:MULTIPLE")
+    endif()
+
+    # # Install and export so downstream can use cspice::chronos, etc.
+    install(TARGETS ${exec_name}
+      EXPORT CSPICETargets
+      RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+
+  endforeach()
+endif()
+
+
