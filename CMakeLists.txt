@@ -371,7 +371,7 @@ if(BUILD_EXECUTABLES)
     )
     target_link_libraries(${exec_name} PRIVATE CSPICE::cspice CSPICE::csupport) 
     if(NOT MSVC AND NOT DEFINED EMSCRIPTEN)
-      target_link_libraries(${target} PRIVATE m)
+      target_link_libraries(${exec_name} PRIVATE m)
     endif()
 
     # # Install and export so downstream can use cspice::chronos, etc.
