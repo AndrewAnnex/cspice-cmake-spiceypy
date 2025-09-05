@@ -373,6 +373,11 @@ if(BUILD_EXECUTABLES)
     if(NOT MSVC AND NOT DEFINED EMSCRIPTEN)
       target_link_libraries(${exec_name} PRIVATE m)
     endif()
+    if(MINGW)
+      target_link_options(${exec_name} PRIVATE -Wl,--allow-multiple-definition)
+    elseif(MSVC)
+      target_link_options(${exec_name} PRIVATE "/FORCE:MULTIPLE")
+    endif()
 
     # # Install and export so downstream can use cspice::chronos, etc.
     install(TARGETS ${exec_name}
