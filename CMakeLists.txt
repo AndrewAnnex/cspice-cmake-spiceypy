@@ -206,34 +206,34 @@ install(DIRECTORY ${CSPICE_SOURCE_ROOT}/include/ DESTINATION ${CMAKE_INSTALL_INC
 # -----------------------------------------------------------------------------
 # CSUPPORT
 # -----------------------------------------------------------------------------
-
-# Locate the CSUPPORT source files.
-file(GLOB_RECURSE CSUPPORT_SOURCES CONFIGURE_DEPENDS
-  ${CSPICE_SOURCE_ROOT}/src/csupport/*.c
-)
-
-# Create the shared library target.
-add_library(csupport SHARED ${CSUPPORT_SOURCES})
-target_link_libraries(csupport PRIVATE CSPICE::cspice)
-target_include_directories(csupport PUBLIC 
-  $<BUILD_INTERFACE:${CSPICE_SOURCE_ROOT}/include>
-  $<INSTALL_INTERFACE:include/cspice>
-)
-
-# Configure using the custom command that handles the platform specific stuff
-configure_platform(csupport)
-
-# Create a namespaced alias so downstream can do “cspice::csupport”
-add_library(CSPICE::csupport ALIAS csupport)
-
-# Installs for cspice headers/shared library etc
-install(TARGETS csupport 
-    EXPORT CSPICETargets
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}       # Windows
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}       # Unix .so / macOS .dylib
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}       # static / import libs
-)
-
+if(BUILD_EXECUTABLES)
+  # Locate the CSUPPORT source files.
+  file(GLOB_RECURSE CSUPPORT_SOURCES CONFIGURE_DEPENDS
+    ${CSPICE_SOURCE_ROOT}/src/csupport/*.c
+  )
+  
+  # Create the shared library target.
+  add_library(csupport SHARED ${CSUPPORT_SOURCES})
+  target_link_libraries(csupport PRIVATE CSPICE::cspice)
+  target_include_directories(csupport PUBLIC 
+    $<BUILD_INTERFACE:${CSPICE_SOURCE_ROOT}/include>
+    $<INSTALL_INTERFACE:include/cspice>
+  )
+  
+  # Configure using the custom command that handles the platform specific stuff
+  configure_platform(csupport)
+  
+  # Create a namespaced alias so downstream can do “cspice::csupport”
+  add_library(CSPICE::csupport ALIAS csupport)
+  
+  # Installs for cspice headers/shared library etc
+  install(TARGETS csupport 
+      EXPORT CSPICETargets
+      RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}       # Windows
+      LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}       # Unix .so / macOS .dylib
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}       # static / import libs
+  )
+endif()
 #-------------------------------------------------------------------------------
 # CMake package configuration
 #-------------------------------------------------------------------------------
@@ -275,7 +275,7 @@ if(BUILD_TESTING)
       C_STANDARD_REQUIRED ON
       C_EXTENSIONS OFF
   )
-  target_link_libraries(test_cspice PRIVATE cspice)
+  target_link_libraries(test_cspice PRIVATE CSPICE::cspice)
   if(DEFINED EMSCRIPTEN)
     target_compile_options(test_cspice PRIVATE -fPIC)
     target_link_options(test_cspice PRIVATE -sMAIN_MODULE=2 -sINITIAL_MEMORY=134217728 )
@@ -327,21 +327,41 @@ if(BUILD_EXECUTABLES)
 
     get_filename_component(exec_name "${pgm_files}" NAME_WE) # basename w/o .pgm
 
-    # Collect other C sources and the .pgm file itself
+    # Step 1: gather sources
     file(GLOB local_c_sources CONFIGURE_DEPENDS "${exec_dir}/*.c")
-    set(all_sources ${local_c_sources} ${pgm_files})
+    file(GLOB pgm_sources CONFIGURE_DEPENDS "${exec_dir}/*.pgm")
+    set_source_files_properties(${pgm_sources} PROPERTIES LANGUAGE C)
 
-    # Compile main.x separately
+    # Object library for the local code
+    add_library(${exec_name}_objs OBJECT ${local_c_sources} ${pgm_sources})
+    set_target_properties(${exec_name}_objs PROPERTIES
+       C_STANDARD 90
+       C_STANDARD_REQUIRED       ON
+       C_EXTENSIONS              ON  
+       POSITION_INDEPENDENT_CODE ON
+       VERSION                   ${PROJECT_VERSION}
+    )
+    target_include_directories(${exec_name}_objs PRIVATE ${CSPICE_SOURCE_ROOT}/include)
+
+    # Step 2: main.x object
     set(main_x "${exec_dir}/main.x")
     set_source_files_properties(${main_x} PROPERTIES LANGUAGE C)
-    if(EXISTS "${main_x}")
-      set(all_sources ${all_sources} ${main_x})
-    else()
-      message(FATAL_ERROR "Missing main.x in ${exec_dir}")
-    endif()
 
-    # Define the executable
-    add_executable(${exec_name} ${all_sources})
+    add_library(${exec_name}_main OBJECT ${main_x})
+    set_target_properties(${exec_name}_main PROPERTIES
+       C_STANDARD 90
+       C_STANDARD_REQUIRED       ON
+       C_EXTENSIONS              ON  
+       POSITION_INDEPENDENT_CODE ON
+       VERSION                   ${PROJECT_VERSION}
+    )
+    target_include_directories(${exec_name}_main PRIVATE ${CSPICE_SOURCE_ROOT}/include)
+
+    # Step 3: link everything into an executable
+    add_executable(${exec_name}
+      $<TARGET_OBJECTS:${exec_name}_objs>
+      $<TARGET_OBJECTS:${exec_name}_main>
+    )
     set_target_properties(${exec_name} PROPERTIES
        C_STANDARD 90
        C_STANDARD_REQUIRED       ON
@@ -349,12 +369,9 @@ if(BUILD_EXECUTABLES)
        POSITION_INDEPENDENT_CODE ON
        VERSION                   ${PROJECT_VERSION}
     )
-    target_link_libraries(${exec_name} PRIVATE CSPICE::cspice CSPICE::csupport)
-    if(NOT MSVC AND NOT DEFINED EMSCRIPTEN)
-      target_link_libraries(${exec_name} PRIVATE m)
-    endif()
+    target_link_libraries(${exec_name} PRIVATE CSPICE::cspice CSPICE::csupport) # csupport already depends on cspice
 
-    # Install and export so downstream can use cspice::chronos, etc.
+    # # Install and export so downstream can use cspice::chronos, etc.
     install(TARGETS ${exec_name}
       EXPORT CSPICETargets
       RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}

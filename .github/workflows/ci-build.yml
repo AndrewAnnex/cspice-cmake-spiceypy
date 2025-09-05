@@ -70,12 +70,14 @@ jobs:
         run: |
           cd build
           ./test_cspice.exe
+          ./version.exe
       
       - name: Run Tests on non-Windows, non-emscripten
         if:  ${{ !contains(matrix.os, 'windows') && !contains(matrix.os, 'emscripten') }}
         run: |
           cd build
           ./test_cspice
+          ./version
 
       - name: Run Tests on Emscripten
         if:  ${{ contains(matrix.os, 'emscripten') }}
