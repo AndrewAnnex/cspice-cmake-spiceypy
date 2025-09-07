@@ -1,4 +1,65 @@
+function(add_export_size target)
+
+  if(CSPICE_EXPORT_SIZE STREQUAL "FULL")
+      set(CSPICE_FLAVOR_ID 0)
+  elseif(CSPICE_EXPORT_SIZE STREQUAL "MEDIUM")
+      set(CSPICE_FLAVOR_ID 1)
+  elseif(CSPICE_EXPORT_SIZE STREQUAL "VLITE")
+      set(CSPICE_FLAVOR_ID 2)
+  else()
+      set(CSPICE_FLAVOR_ID 0)
+  endif()
+
+  # Generate header
+  configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cspice_flavor.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/cspice_flavor.h
+    @ONLY
+  )
+  
+  # Add C file
+  target_sources(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/cspice_flavor.c)
+  
+  # Ensure build+install paths include the generated header
+  target_include_directories(${target} PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
+    $<INSTALL_INTERFACE:include/${target}>
+  )
+  
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/cspice_flavor.h
+          DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/cspice)
+  
+  message(STATUS "Set CSPICE_FLAVOR_ID inside ${target} to ${CSPICE_FLAVOR_ID}")
+
+endfunction(add_export_size)
+
+
 function(configure_platform target)
+
+  # if Emscripten, define which size of cspice to build
+  if(DEFINED EMSCRIPTEN)
+    set(CSPICE_EXPORT_SIZE "FULL" CACHE STRING "For Emscripten builds, set this to which size of cspice you wish to build [FULL, MEDIUM, VLITE]")
+    set_property(CACHE CSPICE_EXPORT_SIZE PROPERTY STRINGS "FULL;MEDIUM;VLITE")
+    message(STATUS "Going to Build cspice version ${CSPICE_EXPORT_SIZE}")
+    # parse what to do with the CSPICE_EXPORT_SIZE
+    if(CSPICE_EXPORT_SIZE STREQUAL "FULL")
+      set(CSPICE_INITIAL_MEMORY "128MB" CACHE STRING "Initial Memory Size for CSPICE ")
+      set(CSPICE_EXPORTED_FUNCTIONS "@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports_full.json" CACHE STRING "Path to export json")
+  
+    elseif(CSPICE_EXPORT_SIZE STREQUAL "MEDIUM")
+      set(CSPICE_INITIAL_MEMORY "64MB" CACHE STRING "Initial Memory Size for CSPICE ")
+      set(CSPICE_EXPORTED_FUNCTIONS "@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports_medium.json" CACHE STRING "Path to export json")
+  
+    elseif(CSPICE_EXPORT_SIZE STREQUAL "VLITE")
+      set(CSPICE_INITIAL_MEMORY "16MB" CACHE STRING "Initial Memory Size for CSPICE ")
+      set(CSPICE_EXPORTED_FUNCTIONS "@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports_vlite.json" CACHE STRING "Path to export json")
+  
+    else()
+      message(WARNING "Unknown CSPICE_EXPORT_SIZE choice: ${CSPICE_EXPORT_SIZE}")
+    endif()
+    # and add the export size
+    add_export_size(${target})
+  endif()
   # -----------------------------------------------------------------------------
   # Additional compile definitions, flags, or versioning.
   # -----------------------------------------------------------------------------
@@ -31,7 +92,7 @@ function(configure_platform target)
       -Wno-parentheses
       -Wno-int-conversion)
     # for the shared library
-    if(DEFINED CSPICE_EMSCRIPTEN_SIDE_MODULE_1)
+    if(DEFINED CSPICE_EMSCRIPTEN_SIDE_MODULE_1 OR ${target} STREQUAL "csupport")
       target_link_options(${target} PRIVATE -shared -Wl
         "-sSIDE_MODULE=1"
         "-sEXPORT_ALL=1"
@@ -47,8 +108,8 @@ function(configure_platform target)
     else()
       target_link_options(${target} PRIVATE -shared -Wl
         "-sSIDE_MODULE=2"
-        "-sEXPORTED_FUNCTIONS=@${CMAKE_CURRENT_SOURCE_DIR}/cspice_exports.json"
-        "-sINITIAL_MEMORY=134217728"   # 128 MB
+        "-sEXPORTED_FUNCTIONS=${CSPICE_EXPORTED_FUNCTIONS}"
+        "-sINITIAL_MEMORY=${CSPICE_INITIAL_MEMORY}"
         "-sALLOW_MEMORY_GROWTH=1"
         "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
         "-sNO_EXIT_RUNTIME=1"
@@ -93,4 +154,7 @@ function(configure_platform target)
     message(STATUS "Configuring ${target} for Windows MinGW/ETC")
     target_compile_definitions(${target} PRIVATE _COMPLEX_DEFINED MSDOS OMIT_BLANK_CC NON_ANSI_STDIO)
   endif()
-endfunction()
+endfunction(configure_platform)
+
+
+

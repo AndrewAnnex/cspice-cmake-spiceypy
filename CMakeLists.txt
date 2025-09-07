@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
 
-#-------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # 1) Project declaration with version and language
-#-------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 project(cspice
     VERSION 67.0.0
     DESCRIPTION "NAIF CSPICE Toolkit"
@@ -22,7 +22,7 @@ option(BUILD_EXECUTABLES "Build and install CSPICE example executables" OFF)
 
 #-------------------------------------------------------------------------------
 # 2) Build type default
-#-------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Only seed a default; let the user override with -DCMAKE_BUILD_TYPE.
 if(NOT DEFINED CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type (default Release)" )
@@ -34,9 +34,9 @@ endif()
 message(STATUS "Using C Compiler: ${CMAKE_C_COMPILER}")
 message(STATUS "C Compiler ID: ${CMAKE_C_COMPILER_ID}")
 
-#-------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # 3) Modules & install dirs
-#-------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 include(CTest)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -214,7 +214,7 @@ install(DIRECTORY ${CSPICE_SOURCE_ROOT}/include/ DESTINATION ${CMAKE_INSTALL_INC
 # -----------------------------------------------------------------------------
 # CSUPPORT
 # -----------------------------------------------------------------------------
-if(BUILD_EXECUTABLES)
+if(BUILD_EXECUTABLES AND NOT DEFINED EMSCRIPTEN)
   # Locate the CSUPPORT source files.
   file(GLOB CSUPPORT_SOURCES 
     ${CSPICE_SOURCE_ROOT}/src/csupport/*.c
@@ -317,7 +317,7 @@ set(CSPICE_EXECUTABLE_DIRS
 )
 
 
-if(BUILD_EXECUTABLES)
+if(BUILD_EXECUTABLES AND NOT DEFINED EMSCRIPTEN)
   foreach(exec_dir IN LISTS CSPICE_EXECUTABLE_DIRS)
     # Find the .pgm file (the real program name comes from this)
     file(GLOB pgm_files CONFIGURE_DEPENDS "${exec_dir}/*.pgm")
