@@ -214,7 +214,7 @@ install(DIRECTORY ${CSPICE_SOURCE_ROOT}/include/ DESTINATION ${CMAKE_INSTALL_INC
 # -----------------------------------------------------------------------------
 # CSUPPORT
 # -----------------------------------------------------------------------------
-if(BUILD_EXECUTABLES)
+if(BUILD_EXECUTABLES AND NOT DEFINED EMSCRIPTEN)
   # Locate the CSUPPORT source files.
   file(GLOB CSUPPORT_SOURCES 
     ${CSPICE_SOURCE_ROOT}/src/csupport/*.c
@@ -317,7 +317,7 @@ set(CSPICE_EXECUTABLE_DIRS
 )
 
 
-if(BUILD_EXECUTABLES)
+if(BUILD_EXECUTABLES AND NOT DEFINED EMSCRIPTEN)
   foreach(exec_dir IN LISTS CSPICE_EXECUTABLE_DIRS)
     # Find the .pgm file (the real program name comes from this)
     file(GLOB pgm_files CONFIGURE_DEPENDS "${exec_dir}/*.pgm")
