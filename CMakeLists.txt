@@ -196,6 +196,7 @@ target_include_directories(cspice PUBLIC
 # Configure using the custom command that handles the platform specific stuff
 configure_platform(cspice)
 
+# Add the so version as a symlink so libcspice.##.0.0, libcspice.##, and libcspice are made
 set_target_properties(cspice PROPERTIES
   VERSION        ${PROJECT_VERSION}    # “current_version” (real file)
   SOVERSION      ${CSPICE_VERSION_INT} # “compatibility_version” (soname)
@@ -238,6 +239,14 @@ if(BUILD_EXECUTABLES AND NOT DEFINED EMSCRIPTEN)
   
   # Configure using the custom command that handles the platform specific stuff
   configure_platform(csupport)
+
+  # Add the so version as a symlink so libcsupport.##.0.0, libcsupport.##, and libcsupport are made
+  set_target_properties(cspice PROPERTIES
+    VERSION        ${PROJECT_VERSION}    # “current_version” (real file)
+    SOVERSION      ${CSPICE_VERSION_INT} # “compatibility_version” (soname)
+    OUTPUT_NAME    csupport  # ensures base name is libcsupport*.dylib
+    INSTALL_NAME_DIR "@rpath"
+  )
   
   # Create a namespaced alias so downstream can do “cspice::csupport”
   add_library(CSPICE::csupport ALIAS csupport)
