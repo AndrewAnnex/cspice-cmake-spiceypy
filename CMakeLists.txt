@@ -242,9 +242,7 @@ if(BUILD_EXECUTABLES AND NOT DEFINED EMSCRIPTEN)
 
   # Add the so version as a symlink so libcsupport.##.0.0, libcsupport.##, and libcsupport are made
   set_target_properties(cspice PROPERTIES
-    VERSION        ${PROJECT_VERSION}    # “current_version” (real file)
     SOVERSION      ${CSPICE_VERSION_INT} # “compatibility_version” (soname)
-    OUTPUT_NAME    csupport  # ensures base name is libcsupport*.dylib
     INSTALL_NAME_DIR "@rpath"
   )
   
