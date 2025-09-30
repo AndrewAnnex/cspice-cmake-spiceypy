@@ -13,6 +13,7 @@ project(cspice
 # Define the version of CSPICE.
 # -----------------------------------------------------------------------------
 set(CSPICE_VERSION "N0067")
+set(CSPICE_VERSION_INT 67)
 
 # -----------------------------------------------------------------------------
 # Define any options 
@@ -194,6 +195,13 @@ target_include_directories(cspice PUBLIC
 
 # Configure using the custom command that handles the platform specific stuff
 configure_platform(cspice)
+
+set_target_properties(cspice PROPERTIES
+  VERSION        ${PROJECT_VERSION}    # “current_version” (real file)
+  SOVERSION      ${CSPICE_VERSION_INT} # “compatibility_version” (soname)
+  OUTPUT_NAME    cspice   # ensures base name is libcspice*.dylib
+  INSTALL_NAME_DIR "@rpath"
+)
 
 # Create a namespaced alias so downstream can do “cspice::cspice”
 add_library(CSPICE::cspice ALIAS cspice)
