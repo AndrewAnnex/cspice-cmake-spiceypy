@@ -16,7 +16,7 @@ set(CSPICE_VERSION "N0067")
 set(CSPICE_VERSION_INT 67)
 
 # -----------------------------------------------------------------------------
-# Define any options 
+# Define any options
 # -----------------------------------------------------------------------------
 option(BUILD_TESTING "Build the CSPICE simple c file test" OFF)
 option(BUILD_EXECUTABLES "Build and install CSPICE example executables" OFF)
@@ -91,30 +91,30 @@ else()
   #-------------------------------------------------------------------------------
   if (MSVC)
     set(FIO_H1 "${CSPICE_SOURCE_ROOT}/include/fio.h")
-  
+
     file(READ "${FIO_H1}" FIO_H1_CONTENTS)
-  
-    string(REPLACE "extern int isatty(int);" 
+
+    string(REPLACE "extern int isatty(int);"
                  "#ifndef _WIN32\nextern int isatty(int);\n#endif"
-                 FIO_H1_CONTENTS_FIXED 
+                 FIO_H1_CONTENTS_FIXED
                  "${FIO_H1_CONTENTS}")
-    
+
     file(WRITE "${FIO_H1}" "${FIO_H1_CONTENTS_FIXED}")
-  
+
     # If it's worth doing once, it's worth doing twice
-  
+
     set(FIO_H2 "${CSPICE_SOURCE_ROOT}/src/cspice/fio.h")
-    
+
     file(READ "${FIO_H2}" FIO_H2_CONTENTS)
-  
-    string(REPLACE "extern int isatty(int);" 
+
+    string(REPLACE "extern int isatty(int);"
                  "#ifndef _WIN32\nextern int isatty(int);\n#endif"
-                 FIO_H2_CONTENTS_FIXED 
+                 FIO_H2_CONTENTS_FIXED
                  "${FIO_H2_CONTENTS}")
-  
+
     file(WRITE "${FIO_H2}" "${FIO_H2_CONTENTS_FIXED}")
   endif()
-  
+
   # -------------------------------------------------------------------
   # EMSCRIPTEN patches section
   # -------------------------------------------------------------------
@@ -163,33 +163,38 @@ else()
       message(STATUS "Emscripten sprintf format patch already applied, skipping")
     endif()
   endif()
-  
+
   # -------------------------------------------------------------------
   # EMSCRIPTEN: fileno() prototype fix (err.c + s_paus.c)
   # -------------------------------------------------------------------
   if (DEFINED EMSCRIPTEN)
     set(CSPICE_FILENO_PATCH_MARKER
         "${CMAKE_CURRENT_BINARY_DIR}/cspice_fileno_patched_emscripten")
- 
+
     if(NOT EXISTS "${CSPICE_FILENO_PATCH_MARKER}")
       message(STATUS "Patching CSPICE fileno() includes for Emscripten.")
- 
+
       # Reuse your existing helper:
       # function(cspice_patch_string_in_file file old new) ... endfunction()
- 
+
       set(ERR_C    "${CSPICE_SOURCE_ROOT}/src/cspice/err.c")
       set(S_PAUS_C "${CSPICE_SOURCE_ROOT}/src/cspice/s_paus.c")
- 
+
       # Insert Emscripten-only includes immediately after '#include "f2c.h"'
       set(_FILENO_INSERT
 "#include \"f2c.h\"
 
 #ifdef __EMSCRIPTEN__
+  #ifndef _POSIX_C_SOURCE
+  #define _POSIX_C_SOURCE 200809L
+  #endif
   #include <stdio.h>  /* FILE, fileno */
   #include <unistd.h> /* isatty (if needed) */
+  extern int fileno(FILE *);
+  extern int isatty(int);
 #endif
  ")
- 
+
       cspice_patch_string_in_file("${ERR_C}"
         "#include \"f2c.h\""
         "${_FILENO_INSERT}"
@@ -205,30 +210,30 @@ else()
       message(STATUS "Emscripten fileno() patch already applied, skipping")
     endif()
   endif()
-  
+
   # -------------------------------------------------------------------
   # General function to patch all CSPICE .c files for one symbol
   # -------------------------------------------------------------------
   function(fix_f2c_symbol symbol good_decl_pattern bad_decl_pattern)
       file(GLOB CSPICE_CS ${CSPICE_SOURCE_ROOT}/src/cspice/*.c)
-  
+
       foreach(src ${CSPICE_CS})
           file(READ "${src}" CONTENTS)
-  
+
           string(REGEX REPLACE "${bad_decl_pattern}" "${good_decl_pattern}" CONTENTS_FIXED "${CONTENTS}")
-  
+
           if(NOT "${CONTENTS}" STREQUAL "${CONTENTS_FIXED}")
               message(STATUS "Patched ${symbol} prototype(s) in ${src}")
               file(WRITE "${src}" "${CONTENTS_FIXED}")
           endif()
       endforeach()
   endfunction()
-  
+
   # -------------------------------------------------------------------
   # Apply prototype fixes only once per build tree
   # -------------------------------------------------------------------
   set(CSPICE_PATCH_MARKER "${CMAKE_CURRENT_BINARY_DIR}/cspice_prototypes_patched")
-  
+
   if(NOT EXISTS ${CSPICE_PATCH_MARKER})
       message(STATUS "Patching CSPICE f2c prototypes...")
 
@@ -249,7 +254,7 @@ else()
             "void zzsetnnread_"
             "int zzsetnnread_"
         )
-  
+
       # Drop a marker so we don't patch twice
       file(WRITE ${CSPICE_PATCH_MARKER} "patched")
   else()
@@ -272,14 +277,14 @@ endif()
 # -----------------------------------------------------------------------------
 
 # Locate the CSPICE source files.
-file(GLOB CSPICE_SOURCES 
+file(GLOB CSPICE_SOURCES
   ${CSPICE_SOURCE_ROOT}/src/cspice/*.c
 )
 
 # Create the shared library target.
 add_library(cspice SHARED ${CSPICE_SOURCES})
 
-target_include_directories(cspice PUBLIC 
+target_include_directories(cspice PUBLIC
   $<BUILD_INTERFACE:${CSPICE_SOURCE_ROOT}/include>
   $<INSTALL_INTERFACE:include/cspice>
 )
@@ -299,7 +304,7 @@ set_target_properties(cspice PROPERTIES
 add_library(CSPICE::cspice ALIAS cspice)
 
 # Installs for cspice headers/shared library etc
-install(TARGETS cspice 
+install(TARGETS cspice
     EXPORT CSPICETargets
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}       # Windows .dll TODO WHY again is this bindir?
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}       # Unix .so / macOS .dylib
@@ -316,18 +321,18 @@ install(DIRECTORY ${CSPICE_SOURCE_ROOT}/include/ DESTINATION ${CMAKE_INSTALL_INC
 # -----------------------------------------------------------------------------
 if(BUILD_EXECUTABLES AND NOT DEFINED EMSCRIPTEN)
   # Locate the CSUPPORT source files.
-  file(GLOB CSUPPORT_SOURCES 
+  file(GLOB CSUPPORT_SOURCES
     ${CSPICE_SOURCE_ROOT}/src/csupport/*.c
   )
-  
+
   # Create the shared library target.
   add_library(csupport SHARED ${CSUPPORT_SOURCES})
   target_link_libraries(csupport PRIVATE CSPICE::cspice)
-  target_include_directories(csupport PUBLIC 
+  target_include_directories(csupport PUBLIC
     $<BUILD_INTERFACE:${CSPICE_SOURCE_ROOT}/include>
     $<INSTALL_INTERFACE:include/cspice>
   )
-  
+
   # Configure using the custom command that handles the platform specific stuff
   configure_platform(csupport)
 
@@ -338,12 +343,12 @@ if(BUILD_EXECUTABLES AND NOT DEFINED EMSCRIPTEN)
     OUTPUT_NAME    csupport  # ensures base name is libcspice*.dylib
     INSTALL_NAME_DIR "@rpath"
   )
-  
+
   # Create a namespaced alias so downstream can do “cspice::csupport”
   add_library(CSPICE::csupport ALIAS csupport)
-  
+
   # Installs for cspice headers/shared library etc
-  install(TARGETS csupport 
+  install(TARGETS csupport
       EXPORT CSPICETargets
       RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}       # Windows
       LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}       # Unix .so / macOS .dylib
@@ -453,7 +458,7 @@ if(BUILD_EXECUTABLES AND NOT DEFINED EMSCRIPTEN)
     set_target_properties(${exec_name}_objs PROPERTIES
        C_STANDARD 90
        C_STANDARD_REQUIRED       ON
-       C_EXTENSIONS              ON  
+       C_EXTENSIONS              ON
        POSITION_INDEPENDENT_CODE ON
        VERSION                   ${PROJECT_VERSION}
     )
@@ -467,7 +472,7 @@ if(BUILD_EXECUTABLES AND NOT DEFINED EMSCRIPTEN)
     set_target_properties(${exec_name}_main PROPERTIES
        C_STANDARD 90
        C_STANDARD_REQUIRED       ON
-       C_EXTENSIONS              ON  
+       C_EXTENSIONS              ON
        POSITION_INDEPENDENT_CODE ON
        VERSION                   ${PROJECT_VERSION}
     )
@@ -481,11 +486,11 @@ if(BUILD_EXECUTABLES AND NOT DEFINED EMSCRIPTEN)
     set_target_properties(${exec_name} PROPERTIES
        C_STANDARD 90
        C_STANDARD_REQUIRED       ON
-       C_EXTENSIONS              ON  
+       C_EXTENSIONS              ON
        POSITION_INDEPENDENT_CODE ON
        VERSION                   ${PROJECT_VERSION}
     )
-    target_link_libraries(${exec_name} PRIVATE CSPICE::cspice CSPICE::csupport) 
+    target_link_libraries(${exec_name} PRIVATE CSPICE::cspice CSPICE::csupport)
     if(NOT MSVC AND NOT DEFINED EMSCRIPTEN)
       target_link_libraries(${exec_name} PRIVATE m)
     endif()
@@ -503,5 +508,3 @@ if(BUILD_EXECUTABLES AND NOT DEFINED EMSCRIPTEN)
 
   endforeach()
 endif()
-
-

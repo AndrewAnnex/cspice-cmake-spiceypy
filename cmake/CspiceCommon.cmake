@@ -86,11 +86,13 @@ function(configure_platform target)
     set_target_properties(${target} PROPERTIES SUFFIX ".wasm")
     target_compile_options(${target} PRIVATE 
       -ansi 
-      -Wno-implicit-function-declaration 
+      -Werror=implicit-function-declaration 
+      -Werror=int-conversion
+      -Werror=incompatible-pointer-types
+      -Werror=return-type
       -Wno-shift-op-parentheses
       -Wno-deprecated-non-prototype
-      -Wno-parentheses
-      -Wno-int-conversion)
+      -Wno-parentheses)
     # for the shared library
     if(DEFINED CSPICE_EMSCRIPTEN_SIDE_MODULE_1 OR ${target} STREQUAL "csupport")
       target_link_options(${target} PRIVATE -shared -Wl
@@ -103,6 +105,8 @@ function(configure_platform target)
         "-sWARN_ON_UNDEFINED_SYMBOLS=1"
         "-sFORCE_FILESYSTEM=1"
         "-sRETAIN_COMPILER_SETTINGS=1"
+        "-sSTACK_OVERFLOW_CHECK=2"
+        "-sSAFE_HEAP=1"
         "-O2"
       )
     else()
@@ -116,6 +120,8 @@ function(configure_platform target)
         "-sWARN_ON_UNDEFINED_SYMBOLS=1"
         "-sFORCE_FILESYSTEM=1"
         "-sRETAIN_COMPILER_SETTINGS=1"
+        "-sSTACK_OVERFLOW_CHECK=2"
+        "-sSAFE_HEAP=1"
         "-O2"
       )
     endif()
