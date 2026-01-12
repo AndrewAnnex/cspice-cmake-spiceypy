@@ -105,7 +105,6 @@ function(configure_platform target)
         "-sWARN_ON_UNDEFINED_SYMBOLS=1"
         "-sFORCE_FILESYSTEM=1"
         "-sRETAIN_COMPILER_SETTINGS=1"
-        "-sSTACK_OVERFLOW_CHECK=2"
         "-sSAFE_HEAP=1"
         "-O2"
       )
@@ -120,7 +119,6 @@ function(configure_platform target)
         "-sWARN_ON_UNDEFINED_SYMBOLS=1"
         "-sFORCE_FILESYSTEM=1"
         "-sRETAIN_COMPILER_SETTINGS=1"
-        "-sSTACK_OVERFLOW_CHECK=2"
         "-sSAFE_HEAP=1"
         "-O2"
       )
