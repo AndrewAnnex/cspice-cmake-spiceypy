@@ -114,7 +114,55 @@ else()
   
     file(WRITE "${FIO_H2}" "${FIO_H2_CONTENTS_FIXED}")
   endif()
+  
+  # -------------------------------------------------------------------
+  # EMSCRIPTEN patches section
+  # -------------------------------------------------------------------
+  if (DEFINED EMSCRIPTEN)
+    set(CSPICE_FMT_PATCH_MARKER
+        "${CMAKE_CURRENT_BINARY_DIR}/cspice_format_patched_emscripten")
 
+    if(NOT EXISTS "${CSPICE_FMT_PATCH_MARKER}")
+      message(STATUS "Patching CSPICE sprintf fort.* format strings for Emscripten.")
+
+      function(cspice_patch_string_in_file file old new)
+        file(READ "${file}" _contents)
+        string(REPLACE "${old}" "${new}" _fixed "${_contents}")
+
+        if(NOT "${_contents}" STREQUAL "${_fixed}")
+          message(STATUS "Patched: ${file}")
+          file(WRITE "${file}" "${_fixed}")
+        else()
+          message(WARNING "Emscripten sprintf patch: pattern not found in ${file}")
+        endif()
+      endfunction()
+
+      set(ENDFILE_C "${CSPICE_SOURCE_ROOT}/src/cspice/endfile.c")
+      set(OPEN_C    "${CSPICE_SOURCE_ROOT}/src/cspice/open.c")
+
+      # endfile.c: sprintf(nbuf,"fort.%ld",a->aunit);
+      cspice_patch_string_in_file("${ENDFILE_C}"
+        "sprintf(nbuf,\"fort.%ld\",a->aunit);"
+        "sprintf(nbuf,\"fort.%d\",(int)a->aunit);"
+      )
+
+      # open.c: sprintf(buf, "fort.%ld", a->ounit);
+      cspice_patch_string_in_file("${OPEN_C}"
+        "sprintf(buf, \"fort.%ld\", a->ounit);"
+        "sprintf(buf, \"fort.%d\", (int)a->ounit);"
+      )
+
+      # open.c: (void) sprintf(nbuf,"fort.%ld",n);
+      cspice_patch_string_in_file("${OPEN_C}"
+        "(void) sprintf(nbuf,\"fort.%ld\",n);"
+        "(void) sprintf(nbuf,\"fort.%d\",(int)n);"
+      )
+
+      file(WRITE "${CSPICE_FMT_PATCH_MARKER}" "patched")
+    else()
+      message(STATUS "Emscripten sprintf format patch already applied, skipping")
+    endif()
+  endif()
   # -------------------------------------------------------------------
   # General function to patch all CSPICE .c files for one symbol
   # -------------------------------------------------------------------
