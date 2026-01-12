@@ -163,6 +163,49 @@ else()
       message(STATUS "Emscripten sprintf format patch already applied, skipping")
     endif()
   endif()
+  
+  # -------------------------------------------------------------------
+  # EMSCRIPTEN: fileno() prototype fix (err.c + s_paus.c)
+  # -------------------------------------------------------------------
+  if (DEFINED EMSCRIPTEN)
+    set(CSPICE_FILENO_PATCH_MARKER
+        "${CMAKE_CURRENT_BINARY_DIR}/cspice_fileno_patched_emscripten")
+ 
+    if(NOT EXISTS "${CSPICE_FILENO_PATCH_MARKER}")
+      message(STATUS "Patching CSPICE fileno() includes for Emscripten.")
+ 
+      # Reuse your existing helper:
+      # function(cspice_patch_string_in_file file old new) ... endfunction()
+ 
+      set(ERR_C    "${CSPICE_SOURCE_ROOT}/src/cspice/err.c")
+      set(S_PAUS_C "${CSPICE_SOURCE_ROOT}/src/cspice/s_paus.c")
+ 
+      # Insert Emscripten-only includes immediately after '#include "f2c.h"'
+      set(_FILENO_INSERT
+"#include \"f2c.h\"
+
+#ifdef __EMSCRIPTEN__
+  #include <stdio.h>  /* FILE, fileno */
+  #include <unistd.h> /* isatty (if needed) */
+#endif
+ ")
+ 
+      cspice_patch_string_in_file("${ERR_C}"
+        "#include \"f2c.h\""
+        "${_FILENO_INSERT}"
+      )
+
+      cspice_patch_string_in_file("${S_PAUS_C}"
+        "#include \"f2c.h\""
+        "${_FILENO_INSERT}"
+      )
+
+      file(WRITE "${CSPICE_FILENO_PATCH_MARKER}" "patched")
+    else()
+      message(STATUS "Emscripten fileno() patch already applied, skipping")
+    endif()
+  endif()
+  
   # -------------------------------------------------------------------
   # General function to patch all CSPICE .c files for one symbol
   # -------------------------------------------------------------------
