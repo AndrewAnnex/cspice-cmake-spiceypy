@@ -98,6 +98,7 @@ function(configure_platform target)
       target_link_options(${target} PRIVATE -shared -Wl
         "-sSIDE_MODULE=1"
         "-sEXPORT_ALL=1"
+        "-sSTACK_SIZE=8388608" # 8 MB
         "-sINITIAL_MEMORY=134217728"   # 128 MB
         "-sALLOW_MEMORY_GROWTH=1"
         "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
@@ -112,6 +113,7 @@ function(configure_platform target)
       target_link_options(${target} PRIVATE -shared -Wl
         "-sSIDE_MODULE=2"
         "-sEXPORTED_FUNCTIONS=${CSPICE_EXPORTED_FUNCTIONS}"
+        "-sSTACK_SIZE=8388608" # 8 MB
         "-sINITIAL_MEMORY=${CSPICE_INITIAL_MEMORY}"
         "-sALLOW_MEMORY_GROWTH=1"
         "-sMEMORY_GROWTH_GEOMETRIC_STEP=1.15"
