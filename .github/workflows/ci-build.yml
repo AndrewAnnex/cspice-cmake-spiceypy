@@ -131,7 +131,7 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: Cache mirror archive
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: mirror-cache/${{ matrix.archive }}
           key: cspice-mirror-${{ matrix.archive }}-${{ env.MIRROR_CACHE_NUMBER }}
