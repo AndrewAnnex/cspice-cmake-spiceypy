@@ -52,14 +52,39 @@ endif()
 
 # -----------------------------------------------------------------------------
 # Determine whether to use a local CSPICE source or to download it.
+#
+# The CSPICE patching helpers (cspice_apply_patches and friends) live in
+# cmake/CspiceCommon.cmake, included above. They operate on a working copy of
+# the source inside the build tree; a user-provided CSPICE_SRC is never
+# modified in place.
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Whether to apply the patches.
+#
+# Defaults to ON to preserve existing behavior for every consumer. Turn it OFF
+# (e.g. when supplying an already-patched CSPICE_SRC) via either:
+#   * CMake:       -DCSPICE_PATCH_SOURCE=OFF
+#   * environment: CSPICE_PATCH_SOURCE=OFF (or 0/NO/FALSE)
+# The environment variable, when set, overrides the CMake option/cache value.
+# -----------------------------------------------------------------------------
+option(CSPICE_PATCH_SOURCE "Apply SpiceyPy-specific patches to the CSPICE source" ON)
+if(DEFINED ENV{CSPICE_PATCH_SOURCE})
+  set(CSPICE_PATCH_SOURCE "$ENV{CSPICE_PATCH_SOURCE}")
+  message(STATUS "CSPICE_PATCH_SOURCE overridden by environment: ${CSPICE_PATCH_SOURCE}")
+endif()
+
+# -----------------------------------------------------------------------------
+# Determine the pristine CSPICE source: either a user-provided local tree
+# (CSPICE_SRC) or a download from NAIF.
 # -----------------------------------------------------------------------------
 if(DEFINED ENV{CSPICE_SRC})
-  set(CSPICE_SOURCE_ROOT $ENV{CSPICE_SRC})
-  message(STATUS "Using local CSPICE source from: $ENV{CSPICE_SRC}")
+  set(CSPICE_SRC_PRISTINE "$ENV{CSPICE_SRC}")
+  message(STATUS "Using local CSPICE source from: ${CSPICE_SRC_PRISTINE}")
 else()
-  # -----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
   # Select the archive URL based on OS and architecture.
-  # -----------------------------------------------------------------------------
+  # ---------------------------------------------------------------------------
   if(WIN32)
     set(CSPICE_ARCHIVE_URL "https://naif.jpl.nasa.gov/pub/naif/misc/toolkit_${CSPICE_VERSION}/C/PC_Windows_VisualC_64bit/packages/cspice.zip")
     set(CSPICE_ARCHIVE_HASH "SHA256=98d60b814b412fa55294aeaaeb7dab46d849cc87a8b709ffe835d08de17625dc")
@@ -84,186 +109,36 @@ else()
     URL ${CSPICE_ARCHIVE_URL}
     URL_HASH ${CSPICE_ARCHIVE_HASH}
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
-    SOURCE_DIR ${CMAKE_BINARY_DIR}/cspice-src
+    SOURCE_DIR ${CMAKE_BINARY_DIR}/cspice-download
   )
   FetchContent_MakeAvailable(cspice_src)
-  set(CSPICE_SOURCE_ROOT ${cspice_src_SOURCE_DIR})
+  set(CSPICE_SRC_PRISTINE ${cspice_src_SOURCE_DIR})
+endif()
 
-  #-------------------------------------------------------------------------------
-  # Patch to use MSVC's isatty if using MSVC
-  #-------------------------------------------------------------------------------
-  if (MSVC)
-    set(FIO_H1 "${CSPICE_SOURCE_ROOT}/include/fio.h")
+# -----------------------------------------------------------------------------
+# Prepare a working copy of the source in the build tree and patch *that copy*,
+# so the pristine source (especially a user-provided CSPICE_SRC) is never
+# modified. Guarded by a single marker so the copy + patch runs exactly once per
+# build tree; starting from a fresh copy makes every patch idempotent by
+# construction (notably the non-idempotent MSVC isatty guard).
+# -----------------------------------------------------------------------------
+set(CSPICE_SOURCE_ROOT ${CMAKE_BINARY_DIR}/cspice-src)
+set(CSPICE_PREPARED_MARKER "${CMAKE_CURRENT_BINARY_DIR}/cspice_source_prepared")
 
-    file(READ "${FIO_H1}" FIO_H1_CONTENTS)
+if(NOT EXISTS "${CSPICE_PREPARED_MARKER}")
+  message(STATUS "Preparing CSPICE working copy at: ${CSPICE_SOURCE_ROOT}")
+  file(REMOVE_RECURSE "${CSPICE_SOURCE_ROOT}")
+  file(COPY "${CSPICE_SRC_PRISTINE}/" DESTINATION "${CSPICE_SOURCE_ROOT}")
 
-    string(REPLACE "extern int isatty(int);"
-                 "#ifndef _WIN32\nextern int isatty(int);\n#endif"
-                 FIO_H1_CONTENTS_FIXED
-                 "${FIO_H1_CONTENTS}")
-
-    file(WRITE "${FIO_H1}" "${FIO_H1_CONTENTS_FIXED}")
-
-    # If it's worth doing once, it's worth doing twice
-
-    set(FIO_H2 "${CSPICE_SOURCE_ROOT}/src/cspice/fio.h")
-
-    file(READ "${FIO_H2}" FIO_H2_CONTENTS)
-
-    string(REPLACE "extern int isatty(int);"
-                 "#ifndef _WIN32\nextern int isatty(int);\n#endif"
-                 FIO_H2_CONTENTS_FIXED
-                 "${FIO_H2_CONTENTS}")
-
-    file(WRITE "${FIO_H2}" "${FIO_H2_CONTENTS_FIXED}")
-  endif()
-
-  # -------------------------------------------------------------------
-  # EMSCRIPTEN patches section
-  # -------------------------------------------------------------------
-  if (DEFINED EMSCRIPTEN)
-    set(CSPICE_FMT_PATCH_MARKER
-        "${CMAKE_CURRENT_BINARY_DIR}/cspice_format_patched_emscripten")
-
-    if(NOT EXISTS "${CSPICE_FMT_PATCH_MARKER}")
-      message(STATUS "Patching CSPICE sprintf fort.* format strings for Emscripten.")
-
-      function(cspice_patch_string_in_file file old new)
-        file(READ "${file}" _contents)
-        string(REPLACE "${old}" "${new}" _fixed "${_contents}")
-
-        if(NOT "${_contents}" STREQUAL "${_fixed}")
-          message(STATUS "Patched: ${file}")
-          file(WRITE "${file}" "${_fixed}")
-        else()
-          message(WARNING "Emscripten sprintf patch: pattern not found in ${file}")
-        endif()
-      endfunction()
-
-      set(ENDFILE_C "${CSPICE_SOURCE_ROOT}/src/cspice/endfile.c")
-      set(OPEN_C    "${CSPICE_SOURCE_ROOT}/src/cspice/open.c")
-
-      # endfile.c: sprintf(nbuf,"fort.%ld",a->aunit);
-      cspice_patch_string_in_file("${ENDFILE_C}"
-        "sprintf(nbuf,\"fort.%ld\",a->aunit);"
-        "sprintf(nbuf,\"fort.%d\",(int)a->aunit);"
-      )
-
-      # open.c: sprintf(buf, "fort.%ld", a->ounit);
-      cspice_patch_string_in_file("${OPEN_C}"
-        "sprintf(buf, \"fort.%ld\", a->ounit);"
-        "sprintf(buf, \"fort.%d\", (int)a->ounit);"
-      )
-
-      # open.c: (void) sprintf(nbuf,"fort.%ld",n);
-      cspice_patch_string_in_file("${OPEN_C}"
-        "(void) sprintf(nbuf,\"fort.%ld\",n);"
-        "(void) sprintf(nbuf,\"fort.%d\",(int)n);"
-      )
-
-      file(WRITE "${CSPICE_FMT_PATCH_MARKER}" "patched")
-    else()
-      message(STATUS "Emscripten sprintf format patch already applied, skipping")
-    endif()
-  endif()
-
-  # -------------------------------------------------------------------
-  # EMSCRIPTEN: fileno() prototype fix (err.c + s_paus.c)
-  # -------------------------------------------------------------------
-  if (DEFINED EMSCRIPTEN)
-    set(CSPICE_FILENO_PATCH_MARKER
-        "${CMAKE_CURRENT_BINARY_DIR}/cspice_fileno_patched_emscripten")
-
-    if(NOT EXISTS "${CSPICE_FILENO_PATCH_MARKER}")
-      message(STATUS "Patching CSPICE fileno() includes for Emscripten.")
-
-      # Reuse your existing helper:
-      # function(cspice_patch_string_in_file file old new) ... endfunction()
-
-      set(ERR_C    "${CSPICE_SOURCE_ROOT}/src/cspice/err.c")
-      set(S_PAUS_C "${CSPICE_SOURCE_ROOT}/src/cspice/s_paus.c")
-
-      # Insert Emscripten-only includes immediately after '#include "f2c.h"'
-      set(_FILENO_INSERT
-"#include \"f2c.h\"
-
-#ifdef __EMSCRIPTEN__
-  #ifndef _POSIX_C_SOURCE
-  #define _POSIX_C_SOURCE 200809L
-  #endif
-  #include <stdio.h>  /* FILE, fileno */
-  #include <unistd.h> /* isatty (if needed) */
-  extern int fileno(FILE *);
-  extern int isatty(int);
-#endif
- ")
-
-      cspice_patch_string_in_file("${ERR_C}"
-        "#include \"f2c.h\""
-        "${_FILENO_INSERT}"
-      )
-
-      cspice_patch_string_in_file("${S_PAUS_C}"
-        "#include \"f2c.h\""
-        "${_FILENO_INSERT}"
-      )
-
-      file(WRITE "${CSPICE_FILENO_PATCH_MARKER}" "patched")
-    else()
-      message(STATUS "Emscripten fileno() patch already applied, skipping")
-    endif()
-  endif()
-
-  # -------------------------------------------------------------------
-  # General function to patch all CSPICE .c files for one symbol
-  # -------------------------------------------------------------------
-  function(fix_f2c_symbol symbol good_decl_pattern bad_decl_pattern)
-      file(GLOB CSPICE_CS ${CSPICE_SOURCE_ROOT}/src/cspice/*.c)
-
-      foreach(src ${CSPICE_CS})
-          file(READ "${src}" CONTENTS)
-
-          string(REGEX REPLACE "${bad_decl_pattern}" "${good_decl_pattern}" CONTENTS_FIXED "${CONTENTS}")
-
-          if(NOT "${CONTENTS}" STREQUAL "${CONTENTS_FIXED}")
-              message(STATUS "Patched ${symbol} prototype(s) in ${src}")
-              file(WRITE "${src}" "${CONTENTS_FIXED}")
-          endif()
-      endforeach()
-  endfunction()
-
-  # -------------------------------------------------------------------
-  # Apply prototype fixes only once per build tree
-  # -------------------------------------------------------------------
-  set(CSPICE_PATCH_MARKER "${CMAKE_CURRENT_BINARY_DIR}/cspice_prototypes_patched")
-
-  if(NOT EXISTS ${CSPICE_PATCH_MARKER})
-      message(STATUS "Patching CSPICE f2c prototypes...")
-
-      # Fix all "/* Subroutine */ int s_copy" to void
-      fix_f2c_symbol("s_copy"
-          "/* Subroutine */ void s_copy"
-          "/\\* Subroutine \\*/ int s_copy"
-      )
-
-      # Fix all "/* Subroutine */ int s_cat" to void
-      fix_f2c_symbol("s_cat"
-          "/* Subroutine */ void s_cat"
-          "/\\* Subroutine \\*/ int s_cat"
-      )
-
-      # Fix all "int zzsetnnread_" to void
-        fix_f2c_symbol("zzsetnnread_"
-            "void zzsetnnread_"
-            "int zzsetnnread_"
-        )
-
-      # Drop a marker so we don't patch twice
-      file(WRITE ${CSPICE_PATCH_MARKER} "patched")
+  if(CSPICE_PATCH_SOURCE)
+    cspice_apply_patches("${CSPICE_SOURCE_ROOT}")
   else()
-      message(STATUS "CSPICE prototypes already patched, skipping")
+    message(STATUS "CSPICE_PATCH_SOURCE is OFF; skipping CSPICE source patches.")
   endif()
 
+  file(WRITE "${CSPICE_PREPARED_MARKER}" "prepared")
+else()
+  message(STATUS "CSPICE working copy already prepared, skipping copy + patch.")
 endif()
 
 # -----------------------------------------------------------------------------
@@ -402,7 +277,12 @@ if(BUILD_TESTING)
   target_link_libraries(test_cspice PRIVATE CSPICE::cspice)
   if(DEFINED EMSCRIPTEN)
     target_compile_options(test_cspice PRIVATE -fPIC)
-    target_link_options(test_cspice PRIVATE -sMAIN_MODULE=2 -sINITIAL_MEMORY=134217728 )
+    # The cspice SIDE_MODULE is linked with -sSAFE_HEAP=1 (see configure_platform
+    # in cmake/CspiceCommon.cmake), so its compiled code references the SAFE_HEAP
+    # runtime helpers (segfault/alignfault). Those helpers are emitted only by the
+    # MAIN_MODULE that loads it, so this main module must enable SAFE_HEAP too or
+    # the final link fails with "undefined symbol: segfault/alignfault".
+    target_link_options(test_cspice PRIVATE -sMAIN_MODULE=2 -sINITIAL_MEMORY=134217728 -sSAFE_HEAP=1 )
     add_test(NAME cspice_test COMMAND node ${CMAKE_CURRENT_BINARY_DIR}/test_cspice.js)
   else()
     add_test(NAME cspice_test COMMAND test_cspice WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
