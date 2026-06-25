@@ -1,3 +1,114 @@
+# -----------------------------------------------------------------------------
+# Patching helpers
+#
+# These operate on a *working copy* of the CSPICE source inside the build tree
+# (prepared in the top-level CMakeLists.txt). We never modify a user-provided
+# CSPICE_SRC tree in place.
+# -----------------------------------------------------------------------------
+
+# Replace a literal string in a single file (warns if the pattern is absent).
+function(cspice_patch_string_in_file file old new)
+  file(READ "${file}" _contents)
+  string(REPLACE "${old}" "${new}" _fixed "${_contents}")
+  if(NOT "${_contents}" STREQUAL "${_fixed}")
+    message(STATUS "Patched: ${file}")
+    file(WRITE "${file}" "${_fixed}")
+  else()
+    message(WARNING "CSPICE patch: pattern not found in ${file}")
+  endif()
+endfunction()
+
+# Regex-replace a symbol's f2c-generated declaration across all CSPICE .c files.
+function(cspice_fix_f2c_symbol root symbol good_decl_pattern bad_decl_pattern)
+  file(GLOB _cspice_cs ${root}/src/cspice/*.c)
+  foreach(src ${_cspice_cs})
+    file(READ "${src}" _contents)
+    string(REGEX REPLACE "${bad_decl_pattern}" "${good_decl_pattern}" _fixed "${_contents}")
+    if(NOT "${_contents}" STREQUAL "${_fixed}")
+      message(STATUS "Patched ${symbol} prototype(s) in ${src}")
+      file(WRITE "${src}" "${_fixed}")
+    endif()
+  endforeach()
+endfunction()
+
+# Apply every SpiceyPy-specific CSPICE patch to the tree rooted at <root>.
+# Intended to run exactly once, on a fresh copy of the source.
+function(cspice_apply_patches root)
+  # ---------------------------------------------------------------------------
+  # Patch to use MSVC's isatty if using MSVC
+  # ---------------------------------------------------------------------------
+  if(MSVC)
+    foreach(_fio "${root}/include/fio.h" "${root}/src/cspice/fio.h")
+      file(READ "${_fio}" _contents)
+      string(REPLACE "extern int isatty(int);"
+                     "#ifndef _WIN32\nextern int isatty(int);\n#endif"
+                     _fixed "${_contents}")
+      file(WRITE "${_fio}" "${_fixed}")
+    endforeach()
+  endif()
+
+  # ---------------------------------------------------------------------------
+  # EMSCRIPTEN: sprintf fort.* format strings
+  # ---------------------------------------------------------------------------
+  if(DEFINED EMSCRIPTEN)
+    message(STATUS "Patching CSPICE sprintf fort.* format strings for Emscripten.")
+    set(_endfile_c "${root}/src/cspice/endfile.c")
+    set(_open_c    "${root}/src/cspice/open.c")
+
+    # endfile.c: sprintf(nbuf,"fort.%ld",a->aunit);
+    cspice_patch_string_in_file("${_endfile_c}"
+      "sprintf(nbuf,\"fort.%ld\",a->aunit);"
+      "sprintf(nbuf,\"fort.%d\",(int)a->aunit);")
+
+    # open.c: sprintf(buf, "fort.%ld", a->ounit);
+    cspice_patch_string_in_file("${_open_c}"
+      "sprintf(buf, \"fort.%ld\", a->ounit);"
+      "sprintf(buf, \"fort.%d\", (int)a->ounit);")
+
+    # open.c: (void) sprintf(nbuf,"fort.%ld",n);
+    cspice_patch_string_in_file("${_open_c}"
+      "(void) sprintf(nbuf,\"fort.%ld\",n);"
+      "(void) sprintf(nbuf,\"fort.%d\",(int)n);")
+  endif()
+
+  # ---------------------------------------------------------------------------
+  # EMSCRIPTEN: fileno() prototype fix (err.c + s_paus.c)
+  # ---------------------------------------------------------------------------
+  if(DEFINED EMSCRIPTEN)
+    message(STATUS "Patching CSPICE fileno() includes for Emscripten.")
+    # Insert Emscripten-only includes immediately after '#include "f2c.h"'
+    set(_fileno_insert
+"#include \"f2c.h\"
+
+#ifdef __EMSCRIPTEN__
+  #ifndef _POSIX_C_SOURCE
+  #define _POSIX_C_SOURCE 200809L
+  #endif
+  #include <stdio.h>  /* FILE, fileno */
+  #include <unistd.h> /* isatty (if needed) */
+  extern int fileno(FILE *);
+  extern int isatty(int);
+#endif
+ ")
+    cspice_patch_string_in_file("${root}/src/cspice/err.c"
+      "#include \"f2c.h\"" "${_fileno_insert}")
+    cspice_patch_string_in_file("${root}/src/cspice/s_paus.c"
+      "#include \"f2c.h\"" "${_fileno_insert}")
+  endif()
+
+  # ---------------------------------------------------------------------------
+  # f2c prototype fixes (all platforms)
+  # ---------------------------------------------------------------------------
+  message(STATUS "Patching CSPICE f2c prototypes...")
+  cspice_fix_f2c_symbol("${root}" "s_copy"
+    "/* Subroutine */ void s_copy" "/\\* Subroutine \\*/ int s_copy")
+  cspice_fix_f2c_symbol("${root}" "s_cat"
+    "/* Subroutine */ void s_cat" "/\\* Subroutine \\*/ int s_cat")
+  cspice_fix_f2c_symbol("${root}" "zzsetnnread_"
+    "void zzsetnnread_" "int zzsetnnread_")
+endfunction()
+
+
 function(add_export_size target)
 
   if(CSPICE_EXPORT_SIZE STREQUAL "FULL")
