@@ -34,11 +34,11 @@ jobs:
     name: Build cmake natively for ${{ matrix.os }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Optionally setup emscripten
         if: ${{ contains(matrix.os, 'emscripten') }}
-        uses: mymindstorm/setup-emsdk@v14
+        uses: emscripten-core/setup-emsdk@v16
       
       - name: Configure CMake Normally
         if: ${{ !contains(matrix.os, 'emscripten') }}
@@ -84,3 +84,130 @@ jobs:
         run: |
           cd build
           node ./test_cspice.js
+
+  # ---------------------------------------------------------------------------
+  # Exercise the CSPICE_SRC code path (local source -> copy -> patch -> build)
+  # using archives served from the cspice-release-mirror repo. This validates
+  # both the new copy/patch-on-CSPICE_SRC behavior and the mirror archives,
+  # without changing the default NAIF download URLs used by the build above.
+  # ---------------------------------------------------------------------------
+  build-from-mirror:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+            # Linux x86_64, source from mirror (CSPICE source is arch-independent)
+          - os: linux-intel
+            runs-on: ubuntu-latest
+            archive: N67_lin_x64_cspice.tar.gz
+            # Linux aarch64, reusing the same (arch-independent) source archive
+          - os: linux-arm
+            runs-on: ubuntu-22.04-arm
+            archive: N67_lin_x64_cspice.tar.gz
+            # macOS x86_64
+          - os: macos-intel
+            runs-on: macos-15-intel
+            archive: N67_mac_x64_cspice.tar.gz
+            # macOS arm64
+          - os: macos-arm
+            runs-on: macos-15
+            archive: N67_mac_arm_cspice.tar.gz
+            # Windows x86_64 MSVC (also exercises the isatty patch)
+          - os: windows-intel
+            runs-on: windows-latest
+            archive: N67_win_x64_cspice.zip
+    runs-on: ${{ matrix.runs-on }}
+    name: Build from mirror (CSPICE_SRC) for ${{ matrix.os }}
+    env:
+      MIRROR_BASE: https://raw.githubusercontent.com/AndrewAnnex/cspice-release-mirror/refs/heads/main/artifacts
+      # bump to invalidate the cached mirror archive
+      MIRROR_CACHE_NUMBER: 0
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Setup MSVC dev environment
+        if: ${{ contains(matrix.os, 'windows') }}
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Cache mirror archive
+        uses: actions/cache@v4
+        with:
+          path: mirror-cache/${{ matrix.archive }}
+          key: cspice-mirror-${{ matrix.archive }}-${{ env.MIRROR_CACHE_NUMBER }}
+
+      - name: Download archive from mirror (if not cached) and verify checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p mirror-cache
+          archive="mirror-cache/${{ matrix.archive }}"
+          if [ ! -f "$archive" ]; then
+            echo "Cache miss; downloading ${{ matrix.archive }} from mirror"
+            curl -fsSL "${MIRROR_BASE}/${{ matrix.archive }}" -o "$archive"
+          else
+            echo "Cache hit; using cached $archive"
+          fi
+          # Always verify against the mirror's sha256 sidecar (cheap, also checks cache integrity)
+          curl -fsSL "${MIRROR_BASE}/${{ matrix.archive }}.sha256" -o "$archive.sha256"
+          expected="$(tr -d '[:space:]' < "$archive.sha256")"
+          actual="$(cmake -E sha256sum "$archive" | awk '{print $1}')"
+          echo "expected sha256: $expected"
+          echo "actual   sha256: $actual"
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::SHA256 mismatch for ${{ matrix.archive }}"
+            exit 1
+          fi
+          echo "Checksum OK"
+
+      - name: Extract archive and export CSPICE_SRC
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf cspice_src && mkdir -p cspice_src
+          # cmake -E tar autodetects .tar.gz and .zip across all platforms
+          ( cd cspice_src && cmake -E tar xf "../mirror-cache/${{ matrix.archive }}" )
+          # archives contain a single top-level cspice/ directory (contains src/ and include/)
+          root="$(pwd)/cspice_src/cspice"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            root="$(cygpath -m "$root")"
+          fi
+          echo "Resolved CSPICE_SRC=$root"
+          test -d "$root/src/cspice"
+          test -d "$root/include"
+          echo "CSPICE_SRC=$root" >> "$GITHUB_ENV"
+
+      - name: Configure CMake (using CSPICE_SRC from mirror)
+        run: cmake -B build -S . -G Ninja -DBUILD_TESTING=on -DBUILD_EXECUTABLES=ON
+
+      - name: Build with CMake
+        run: cmake --build build --parallel 4 --config Release
+
+      - name: Verify patches hit the copy and the pristine source is untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "pristine ana.c (expect 'int s_copy'):"
+          grep -m1 "Subroutine \*/ .* s_copy" "$CSPICE_SRC/src/cspice/ana.c"
+          grep -q "void s_copy" build/cspice-src/src/cspice/ana.c \
+            && echo "copy patched: OK"
+          grep -q "/\* Subroutine \*/ int s_copy" "$CSPICE_SRC/src/cspice/ana.c" \
+            && echo "pristine intact: OK"
+
+      - name: Show properties of the build folder
+        shell: bash
+        run: ls -lahtr ./build
+
+      - name: Run Tests on Windows
+        if: ${{ contains(matrix.os, 'windows') }}
+        run: |
+          cd build
+          ./test_cspice.exe
+          ./version.exe
+
+      - name: Run Tests on non-Windows
+        if: ${{ !contains(matrix.os, 'windows') }}
+        run: |
+          cd build
+          ./test_cspice
+          ./version
