@@ -31,6 +31,23 @@ function(cspice_fix_f2c_symbol root symbol good_decl_pattern bad_decl_pattern)
   endforeach()
 endfunction()
 
+# Prepend an explicit `int` return type to a bare K&R function definition.
+# <line> is the definition line exactly as it appears (including any leading
+# indentation). The match is anchored on the preceding newline so we never
+# hit a longer name (e.g. `ne_d` when patching `e_d`) or an already-typed
+# prototype/declaration elsewhere in the file.
+function(cspice_fix_implicit_int file line)
+  file(READ "${file}" _contents)
+  string(STRIP "${line}" _bare)
+  string(REPLACE "\n${line}" "\nint ${_bare}" _fixed "${_contents}")
+  if(NOT "${_contents}" STREQUAL "${_fixed}")
+    message(STATUS "Patched implicit-int (${_bare}) in ${file}")
+    file(WRITE "${file}" "${_fixed}")
+  else()
+    message(WARNING "CSPICE implicit-int patch: not found in ${file}: ${line}")
+  endif()
+endfunction()
+
 # Apply every SpiceyPy-specific CSPICE patch to the tree rooted at <root>.
 # Intended to run exactly once, on a fresh copy of the source.
 function(cspice_apply_patches root)
@@ -48,48 +65,48 @@ function(cspice_apply_patches root)
   endif()
 
   # ---------------------------------------------------------------------------
-  # EMSCRIPTEN: sprintf fort.* format strings
+  # sprintf "fort.%ld" format strings (all platforms). ftnint is int here, so
+  # "%ld" is a type mismatch (-Wformat); use "%d" with an explicit (int) cast.
   # ---------------------------------------------------------------------------
-  if(DEFINED EMSCRIPTEN)
-    message(STATUS "Patching CSPICE sprintf fort.* format strings for Emscripten.")
-    set(_endfile_c "${root}/src/cspice/endfile.c")
-    set(_open_c    "${root}/src/cspice/open.c")
+  message(STATUS "Patching CSPICE sprintf fort.* format strings.")
+  set(_endfile_c "${root}/src/cspice/endfile.c")
+  set(_open_c    "${root}/src/cspice/open.c")
 
-    # endfile.c: sprintf(nbuf,"fort.%ld",a->aunit);
-    cspice_patch_string_in_file("${_endfile_c}"
-      "sprintf(nbuf,\"fort.%ld\",a->aunit);"
-      "sprintf(nbuf,\"fort.%d\",(int)a->aunit);")
+  # endfile.c: sprintf(nbuf,"fort.%ld",a->aunit);
+  cspice_patch_string_in_file("${_endfile_c}"
+    "sprintf(nbuf,\"fort.%ld\",a->aunit);"
+    "sprintf(nbuf,\"fort.%d\",(int)a->aunit);")
 
-    # open.c: sprintf(buf, "fort.%ld", a->ounit);
-    cspice_patch_string_in_file("${_open_c}"
-      "sprintf(buf, \"fort.%ld\", a->ounit);"
-      "sprintf(buf, \"fort.%d\", (int)a->ounit);")
+  # open.c: sprintf(buf, "fort.%ld", a->ounit);
+  cspice_patch_string_in_file("${_open_c}"
+    "sprintf(buf, \"fort.%ld\", a->ounit);"
+    "sprintf(buf, \"fort.%d\", (int)a->ounit);")
 
-    # open.c: (void) sprintf(nbuf,"fort.%ld",n);
-    cspice_patch_string_in_file("${_open_c}"
-      "(void) sprintf(nbuf,\"fort.%ld\",n);"
-      "(void) sprintf(nbuf,\"fort.%d\",(int)n);")
-  endif()
+  # open.c: (void) sprintf(nbuf,"fort.%ld",n);
+  cspice_patch_string_in_file("${_open_c}"
+    "(void) sprintf(nbuf,\"fort.%ld\",n);"
+    "(void) sprintf(nbuf,\"fort.%d\",(int)n);")
 
   # ---------------------------------------------------------------------------
-  # EMSCRIPTEN: fileno() prototype fix (err.c + s_paus.c)
+  # fileno()/isatty() prototype fix (err.c + s_paus.c), all gcc/clang builds.
+  # These POSIX functions are hidden under -ansi (__STRICT_ANSI__), producing
+  # -Wimplicit-function-declaration (a hard error under C23 / GCC 14). Declare
+  # them explicitly right after f2c.h; harmless where already visible. Skipped
+  # on Windows (MSVC/MinGW use _fileno and don't add -ansi).
   # ---------------------------------------------------------------------------
-  if(DEFINED EMSCRIPTEN)
-    message(STATUS "Patching CSPICE fileno() includes for Emscripten.")
-    # Insert Emscripten-only includes immediately after '#include "f2c.h"'
+  if(NOT WIN32)
+    message(STATUS "Patching CSPICE fileno()/isatty() prototypes.")
     set(_fileno_insert
 "#include \"f2c.h\"
 
-#ifdef __EMSCRIPTEN__
-  #ifndef _POSIX_C_SOURCE
-  #define _POSIX_C_SOURCE 200809L
-  #endif
-  #include <stdio.h>  /* FILE, fileno */
-  #include <unistd.h> /* isatty (if needed) */
-  extern int fileno(FILE *);
-  extern int isatty(int);
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
 #endif
- ")
+#include <stdio.h>  /* FILE, fileno */
+#include <unistd.h> /* isatty */
+extern int fileno(FILE *);
+extern int isatty(int);
+")
     cspice_patch_string_in_file("${root}/src/cspice/err.c"
       "#include \"f2c.h\"" "${_fileno_insert}")
     cspice_patch_string_in_file("${root}/src/cspice/s_paus.c"
@@ -106,6 +123,96 @@ function(cspice_apply_patches root)
     "/* Subroutine */ void s_cat" "/\\* Subroutine \\*/ int s_cat")
   cspice_fix_f2c_symbol("${root}" "zzsetnnread_"
     "void zzsetnnread_" "int zzsetnnread_")
+
+  # ---------------------------------------------------------------------------
+  # libf2c implicit-int return types (all platforms). These f2c runtime
+  # routines define functions without the (int) return type. Modern compilers
+  # warn (-Wimplicit-int) and C23 / GCC 14 make it a hard error. Prepend int.
+  # ---------------------------------------------------------------------------
+  message(STATUS "Patching CSPICE libf2c implicit-int definitions...")
+  set(_cs "${root}/src/cspice")
+  cspice_fix_implicit_int("${_cs}/dfe.c"    "y_rsk(Void)")
+  cspice_fix_implicit_int("${_cs}/dfe.c"    "y_getc(Void)")
+  cspice_fix_implicit_int("${_cs}/dfe.c"    "c_dfe(cilist *a)")
+  cspice_fix_implicit_int("${_cs}/due.c"    "c_due(cilist *a)")
+  cspice_fix_implicit_int("${_cs}/fmt.c"    "op_gen(int a, int b, int c, int d)")
+  cspice_fix_implicit_int("${_cs}/fmt.c"    "ne_d(char *s, char **p)")
+  cspice_fix_implicit_int("${_cs}/fmt.c"    "e_d(char *s, char **p)")
+  cspice_fix_implicit_int("${_cs}/fmt.c"    "pars_f(char *s)")
+  cspice_fix_implicit_int("${_cs}/fmt.c"    "type_f(int n)")
+  cspice_fix_implicit_int("${_cs}/fmt.c"    "en_fio(Void)")
+  cspice_fix_implicit_int("${_cs}/iio.c"    "z_getc(Void)")
+  cspice_fix_implicit_int("${_cs}/iio.c"    "z_rnew(Void)")
+  cspice_fix_implicit_int("${_cs}/iio.c"    "c_si(icilist *a)")
+  cspice_fix_implicit_int("${_cs}/iio.c"    "z_wnew(Void)")
+  cspice_fix_implicit_int("${_cs}/lread.c"  "t_getc(Void)")
+  cspice_fix_implicit_int("${_cs}/lread.c"  "c_le(cilist *a)")
+  cspice_fix_implicit_int("${_cs}/lread.c"  "l_read(ftnint *number, char *ptr, ftnlen len, ftnint type)")
+  cspice_fix_implicit_int("${_cs}/lwrite.c" "l_write(ftnint *number, char *ptr, ftnlen len, ftnint type)")
+  cspice_fix_implicit_int("${_cs}/open.c"   "   fk_open(int seq, int fmt, ftnint n)")
+  cspice_fix_implicit_int("${_cs}/rdfmt.c"  "rd_ed(struct syl *p, char *ptr, ftnlen len)")
+  cspice_fix_implicit_int("${_cs}/rdfmt.c"  "rd_ned(struct syl *p)")
+  cspice_fix_implicit_int("${_cs}/rsfe.c"   "xrd_SL(Void)")
+  cspice_fix_implicit_int("${_cs}/rsfe.c"   "x_getc(Void)")
+  cspice_fix_implicit_int("${_cs}/rsfe.c"   "x_endp(Void)")
+  cspice_fix_implicit_int("${_cs}/rsfe.c"   "x_rev(Void)")
+  cspice_fix_implicit_int("${_cs}/rsne.c"   "x_rsne(cilist *a)")
+  cspice_fix_implicit_int("${_cs}/sfe.c"    "c_sfe(cilist *a) /* check */")
+  cspice_fix_implicit_int("${_cs}/sue.c"    "c_sue(cilist *a)")
+  cspice_fix_implicit_int("${_cs}/uio.c"    "do_us(ftnint *number, char *ptr, ftnlen len)")
+  cspice_fix_implicit_int("${_cs}/wref.c"   "wrt_E(ufloat *p, int w, int d, int e, ftnlen len)")
+  cspice_fix_implicit_int("${_cs}/wref.c"   "wrt_F(ufloat *p, int w, int d, ftnlen len)")
+  cspice_fix_implicit_int("${_cs}/wrtfmt.c" "wrt_L(Uint *n, int len, ftnlen sz)")
+  cspice_fix_implicit_int("${_cs}/wrtfmt.c" "w_ed(struct syl *p, char *ptr, ftnlen len)")
+  cspice_fix_implicit_int("${_cs}/wrtfmt.c" "w_ned(struct syl *p)")
+
+  # rsne.c: a bare `extern t_getc(Void);` declaration also defaults to int.
+  cspice_patch_string_in_file("${_cs}/rsne.c"
+    "extern t_getc(Void);" "extern int t_getc(Void);")
+
+  # ---------------------------------------------------------------------------
+  # Remaining libf2c warnings (all platforms)
+  # ---------------------------------------------------------------------------
+  # backspace.c: consume fread()'s result (-Wunused-result). A plain (void)
+  # cast does NOT suppress GCC's warn_unused_result, so assign it to a
+  # discarded variable inside its own block (valid C89 declaration position).
+  cspice_patch_string_in_file("${_cs}/backspace.c"
+    "fread((char *)&n,sizeof(uiolen),1,f);"
+    "{ size_t _nr = fread((char *)&n,sizeof(uiolen),1,f); (void)_nr; }")
+  # signal_.c: cast the function pointer through a pointer-width integer before
+  # narrowing to ftnint, silencing -Wpointer-to-int-cast on LP64 platforms.
+  cspice_patch_string_in_file("${_cs}/signal_.c"
+    "return (ftnint)signal(sig, proc);"
+    "return (ftnint)(long)signal(sig, proc);")
+
+  # ---------------------------------------------------------------------------
+  # zzerror.c: GCC's -Wformat-overflow can't bound the %s appends into the
+  # fixed msg_short buffer. Use snprintf() with the remaining space: behavior-
+  # preserving within SPICE's limits and overflow-safe. snprintf is C99/POSIX
+  # and hidden by glibc under -ansi (__STRICT_ANSI__), so declare it first to
+  # avoid introducing an implicit-function-declaration.
+  #
+  # The `!defined(snprintf)` guard is essential on macOS: there, even under
+  # -ansi, <secure/_stdio.h> exposes snprintf as a fortifying *macro*
+  # (__builtin___snprintf_chk(...)). Our prototype would then expand through
+  # that macro and fail to compile ("expected parameter declarator"). When
+  # snprintf is already a macro the platform clearly provides it, so we skip
+  # our own declaration; we only need it where -ansi truly hides snprintf
+  # (glibc), where it is neither declared nor a macro.
+  # ---------------------------------------------------------------------------
+  cspice_patch_string_in_file("${_cs}/zzerror.c"
+    "#include \"zzerror.h\""
+    "#include \"zzerror.h\"
+
+#if defined(__STRICT_ANSI__) && !defined(snprintf)
+/* snprintf() is hidden by glibc under -ansi; declare it for the bounded
+   msg_short appends below (-Wformat-overflow fix). Skipped where snprintf is
+   already a macro (e.g. macOS fortify headers). */
+extern int snprintf(char *, size_t, const char *, ...);
+#endif")
+  cspice_patch_string_in_file("${_cs}/zzerror.c"
+    "sprintf( msg_short + strlen(msg_short),"
+    "snprintf( msg_short + strlen(msg_short), sizeof(msg_short) - strlen(msg_short),")
 endfunction()
 
 
@@ -195,6 +302,14 @@ function(configure_platform target)
   if(DEFINED EMSCRIPTEN)
     message(STATUS "Configuring ${target} for Emscripten")
     set_target_properties(${target} PROPERTIES SUFFIX ".wasm")
+    # SAFE_HEAP is debug-only and viral (forces the loading MAIN_MODULE to enable
+    # it too); off by default so the shipped side module loads under stock pyodide.
+    if(CSPICE_EMSCRIPTEN_SAFE_HEAP)
+      message(STATUS "  CSPICE_EMSCRIPTEN_SAFE_HEAP=ON: linking ${target} with -sSAFE_HEAP=1")
+      set(_safe_heap "-sSAFE_HEAP=1")
+    else()
+      set(_safe_heap "")
+    endif()
     target_compile_options(${target} PRIVATE 
       -ansi 
       -Werror=implicit-function-declaration 
@@ -217,7 +332,7 @@ function(configure_platform target)
         "-sWARN_ON_UNDEFINED_SYMBOLS=1"
         "-sFORCE_FILESYSTEM=1"
         "-sRETAIN_COMPILER_SETTINGS=1"
-        "-sSAFE_HEAP=1"
+        ${_safe_heap}
         "-O2"
       )
     else()
@@ -232,7 +347,7 @@ function(configure_platform target)
         "-sWARN_ON_UNDEFINED_SYMBOLS=1"
         "-sFORCE_FILESYSTEM=1"
         "-sRETAIN_COMPILER_SETTINGS=1"
-        "-sSAFE_HEAP=1"
+        ${_safe_heap}
         "-O2"
       )
     endif()
