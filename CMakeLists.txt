@@ -21,6 +21,14 @@ set(CSPICE_VERSION_INT 67)
 option(BUILD_TESTING "Build the CSPICE simple c file test" OFF)
 option(BUILD_EXECUTABLES "Build and install CSPICE example executables" OFF)
 
+# Emscripten SAFE_HEAP is a debug-only instrumentation: it makes the cspice
+# SIDE_MODULE reference segfault/alignfault helpers that only the loading
+# MAIN_MODULE can emit. Stock pyodide (SpiceyPy's runtime) is not built with it,
+# so shipping it breaks side-module loading there (same failure mode that got
+# -sSTACK_OVERFLOW_CHECK=2 removed). Keep it OFF for production; flip it ON for a
+# local debugging session (it also gets applied to the test_cspice MAIN_MODULE).
+option(CSPICE_EMSCRIPTEN_SAFE_HEAP "Enable -sSAFE_HEAP=1 for Emscripten builds (debug only)" OFF)
+
 #-------------------------------------------------------------------------------
 # 2) Build type default
 # -----------------------------------------------------------------------------
@@ -277,12 +285,18 @@ if(BUILD_TESTING)
   target_link_libraries(test_cspice PRIVATE CSPICE::cspice)
   if(DEFINED EMSCRIPTEN)
     target_compile_options(test_cspice PRIVATE -fPIC)
-    # The cspice SIDE_MODULE is linked with -sSAFE_HEAP=1 (see configure_platform
-    # in cmake/CspiceCommon.cmake), so its compiled code references the SAFE_HEAP
-    # runtime helpers (segfault/alignfault). Those helpers are emitted only by the
-    # MAIN_MODULE that loads it, so this main module must enable SAFE_HEAP too or
-    # the final link fails with "undefined symbol: segfault/alignfault".
-    target_link_options(test_cspice PRIVATE -sMAIN_MODULE=2 -sINITIAL_MEMORY=134217728 -sSAFE_HEAP=1 )
+    # When CSPICE_EMSCRIPTEN_SAFE_HEAP is ON, the cspice SIDE_MODULE is linked
+    # with -sSAFE_HEAP=1 (see configure_platform in cmake/CspiceCommon.cmake), so
+    # its compiled code references the SAFE_HEAP runtime helpers
+    # (segfault/alignfault). Those helpers are emitted only by the MAIN_MODULE
+    # that loads it, so this main module must enable SAFE_HEAP in lock-step or the
+    # final link fails with "undefined symbol: segfault/alignfault".
+    if(CSPICE_EMSCRIPTEN_SAFE_HEAP)
+      set(_test_safe_heap "-sSAFE_HEAP=1")
+    else()
+      set(_test_safe_heap "")
+    endif()
+    target_link_options(test_cspice PRIVATE -sMAIN_MODULE=2 -sINITIAL_MEMORY=134217728 ${_test_safe_heap})
     add_test(NAME cspice_test COMMAND node ${CMAKE_CURRENT_BINARY_DIR}/test_cspice.js)
   else()
     add_test(NAME cspice_test COMMAND test_cspice WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
