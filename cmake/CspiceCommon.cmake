@@ -191,14 +191,23 @@ extern int isatty(int);
   # preserving within SPICE's limits and overflow-safe. snprintf is C99/POSIX
   # and hidden by glibc under -ansi (__STRICT_ANSI__), so declare it first to
   # avoid introducing an implicit-function-declaration.
+  #
+  # The `!defined(snprintf)` guard is essential on macOS: there, even under
+  # -ansi, <secure/_stdio.h> exposes snprintf as a fortifying *macro*
+  # (__builtin___snprintf_chk(...)). Our prototype would then expand through
+  # that macro and fail to compile ("expected parameter declarator"). When
+  # snprintf is already a macro the platform clearly provides it, so we skip
+  # our own declaration; we only need it where -ansi truly hides snprintf
+  # (glibc), where it is neither declared nor a macro.
   # ---------------------------------------------------------------------------
   cspice_patch_string_in_file("${_cs}/zzerror.c"
     "#include \"zzerror.h\""
     "#include \"zzerror.h\"
 
-#if defined(__STRICT_ANSI__)
+#if defined(__STRICT_ANSI__) && !defined(snprintf)
 /* snprintf() is hidden by glibc under -ansi; declare it for the bounded
-   msg_short appends below (-Wformat-overflow fix). */
+   msg_short appends below (-Wformat-overflow fix). Skipped where snprintf is
+   already a macro (e.g. macOS fortify headers). */
 extern int snprintf(char *, size_t, const char *, ...);
 #endif")
   cspice_patch_string_in_file("${_cs}/zzerror.c"
